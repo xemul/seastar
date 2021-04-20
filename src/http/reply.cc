@@ -156,7 +156,7 @@ public:
 };
 
 static output_stream<char> make_http_chunked_output_stream(output_stream<char>& out) {
-    return output_stream<char>(http_chunked_data_sink(out), 32000, true);
+    return output_stream<char>(http_chunked_data_sink(out), 32000, stream_trim_to_size::yes);
 }
 
 

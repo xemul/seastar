@@ -39,6 +39,7 @@
 #include <seastar/core/temporary_buffer.hh>
 #include <seastar/core/scattered_message.hh>
 #include <seastar/util/std-compat.hh>
+#include <seastar/util/bool_class.hh>
 
 namespace seastar {
 
@@ -326,6 +327,10 @@ private:
 /// \note All methods must be called sequentially.  That is, no method
 /// may be invoked before the previous method's returned future is
 /// resolved.
+
+using stream_trim_to_size = bool_class<struct trim_to_size_tag>;
+using stream_batch_flushes = bool_class<struct batch_flushes_tag>;
+
 template <typename CharType>
 class output_stream final {
     static_assert(sizeof(CharType) == 1, "must buffer stream of bytes");
@@ -354,8 +359,15 @@ private:
 public:
     using char_type = CharType;
     output_stream() noexcept = default;
-    output_stream(data_sink fd, size_t size, bool trim_to_size = false, bool batch_flushes = false) noexcept
+    output_stream(data_sink fd, size_t size, stream_trim_to_size trim, stream_batch_flushes batch = stream_batch_flushes::no) noexcept
+        : _fd(std::move(fd)), _size(size), _trim_to_size((bool)trim), _batch_flushes((bool)batch) {}
+    [[deprecated("use stream_trim_to_size and stream_batch_flushes instead of booleans")]]
+    output_stream(data_sink fd, size_t size, bool trim_to_size, bool batch_flushes = false) noexcept
         : _fd(std::move(fd)), _size(size), _trim_to_size(trim_to_size), _batch_flushes(batch_flushes) {}
+    // XXX: remove this constructor when removing the deprecated one above and
+    // make default arg to stream_trim_to_size argument
+    output_stream(data_sink fd, size_t size) noexcept
+        : _fd(std::move(fd)), _size(size) {}
     output_stream(output_stream&&) noexcept = default;
     output_stream& operator=(output_stream&&) noexcept = default;
     ~output_stream() { assert(!_in_batch && "Was this stream properly closed?"); }

@@ -326,6 +326,12 @@ private:
 /// \note All methods must be called sequentially.  That is, no method
 /// may be invoked before the previous method's returned future is
 /// resolved.
+
+struct output_stream_options {
+    bool trim_to_size = false;
+    bool batch_flushes = false;
+};
+
 template <typename CharType>
 class output_stream final {
     static_assert(sizeof(CharType) == 1, "must buffer stream of bytes");
@@ -354,6 +360,9 @@ private:
 public:
     using char_type = CharType;
     output_stream() noexcept = default;
+    output_stream(data_sink fd, size_t size, output_stream_options opts) noexcept
+        : _fd(std::move(fd)), _size(size), _trim_to_size(opts.trim_to_size), _batch_flushes(opts.batch_flushes) {}
+    [[deprecated("use output_stream_options instead of booleans")]]
     output_stream(data_sink fd, size_t size, bool trim_to_size = false, bool batch_flushes = false) noexcept
         : _fd(std::move(fd)), _size(size), _trim_to_size(trim_to_size), _batch_flushes(batch_flushes) {}
     output_stream(output_stream&&) noexcept = default;

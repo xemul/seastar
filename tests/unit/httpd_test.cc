@@ -334,7 +334,7 @@ future<> test_transformer_stream(std::stringstream& ss, content_replace& cr, std
     std::unique_ptr<seastar::httpd::request> req = std::make_unique<seastar::httpd::request>();
     ss.str("");
     req->_headers["Host"] = "localhost";
-    return do_with(output_stream<char>(cr.transform(std::move(req), "json", output_stream<char>(memory_data_sink(ss), 32000, true))),
+    return do_with(output_stream<char>(cr.transform(std::move(req), "json", output_stream<char>(memory_data_sink(ss), 32000, stream_trim_to_size::yes))),
             std::vector<sstring>(std::move(buffer_parts)), [] (output_stream<char>& os, std::vector<sstring>& parts) {
         return do_for_each(parts, [&os](auto& p) {
             return os.write(p);
@@ -346,7 +346,7 @@ future<> test_transformer_stream(std::stringstream& ss, content_replace& cr, std
 
 SEASTAR_TEST_CASE(test_transformer) {
     return do_with(std::stringstream(), content_replace("json"), [] (std::stringstream& ss, content_replace& cr) {
-        return do_with(output_stream<char>(cr.transform(std::make_unique<seastar::httpd::request>(), "html", output_stream<char>(memory_data_sink(ss), 32000, true))),
+        return do_with(output_stream<char>(cr.transform(std::make_unique<seastar::httpd::request>(), "html", output_stream<char>(memory_data_sink(ss), 32000, stream_trim_to_size::yes))),
                 [] (output_stream<char>& os) {
             return os.write(sstring("hello-{{Protocol}}-xyz-{{Host}}")).then([&os] {
                 return os.close();

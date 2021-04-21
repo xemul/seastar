@@ -110,6 +110,10 @@ public:
         return make_ready_future<>();
     }
     virtual future<> close() = 0;
+    virtual size_t buffer_size() const noexcept {
+        assert(false && "Data sink must have the buffer_size() method overload");
+        return 0;
+    }
 };
 
 class data_sink {
@@ -157,6 +161,8 @@ public:
             return current_exception_as_future();
         }
     }
+
+    size_t buffer_size() const noexcept { return _dsi->buffer_size(); }
 };
 
 struct continue_consuming {};
@@ -368,6 +374,8 @@ public:
     // make default arg to stream_trim_to_size argument
     output_stream(data_sink fd, size_t size) noexcept
         : _fd(std::move(fd)), _size(size) {}
+    output_stream(data_sink fd) noexcept
+        : _fd(std::move(fd)), _size(_fd.buffer_size()), _trim_to_size(true) {}
     output_stream(output_stream&&) noexcept = default;
     output_stream& operator=(output_stream&&) noexcept = default;
     ~output_stream() { assert(!_in_batch && "Was this stream properly closed?"); }

@@ -386,14 +386,14 @@ io_priority_class io_priority_class::register_one(sstring name, uint32_t shares)
     throw std::runtime_error("No more room for new I/O priority classes");
 }
 
-bool io_queue::rename_one_priority_class(io_priority_class pc, sstring new_name) {
-    std::lock_guard<std::mutex> guard(_register_lock);
-    for (unsigned i = 0; i < _max_classes; ++i) {
-       if (!_registered_shares[i]) {
+bool io_priority_class::rename(sstring new_name) {
+    std::lock_guard<std::mutex> guard(io_queue::_register_lock);
+    for (unsigned i = 0; i < io_queue::_max_classes; ++i) {
+       if (!io_queue::_registered_shares[i]) {
            break;
        }
-       if (_registered_names[i] == new_name) {
-           if (i == pc.id()) {
+       if (io_queue::_registered_names[i] == new_name) {
+           if (i == _id) {
                return false;
            } else {
                throw std::runtime_error(format("rename priority class: an attempt was made to rename a priority class to an"
@@ -401,7 +401,7 @@ bool io_queue::rename_one_priority_class(io_priority_class pc, sstring new_name)
            }
        }
     }
-    _registered_names[pc.id()] = new_name;
+    io_queue::_registered_names[_id] = new_name;
     return true;
 }
 

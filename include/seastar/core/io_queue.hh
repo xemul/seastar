@@ -86,10 +86,6 @@ private:
     static std::array<uint32_t, _max_classes> _registered_shares;
     static std::array<sstring, _max_classes> _registered_names;
 
-public:
-    static bool rename_one_priority_class(io_priority_class pc, sstring name);
-
-private:
     priority_class_data& find_or_create_class(const io_priority_class& pc);
 
     // The fields below are going away, they are just here so we can implement deprecated

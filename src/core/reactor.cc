@@ -199,7 +199,7 @@ reactor::rename_priority_class(io_priority_class pc, sstring new_name) noexcept 
         // holding the lock until all cross shard activity is over.
 
         try {
-            if (!io_queue::rename_one_priority_class(pc, new_name)) {
+            if (!pc.rename(new_name)) {
                 return make_ready_future<>();
             }
         } catch (...) {

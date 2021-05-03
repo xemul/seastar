@@ -79,13 +79,6 @@ private:
     fair_queue _fq;
     internal::io_sink& _sink;
 
-    friend class io_priority_class; // temporary
-
-    static constexpr unsigned _max_classes = 2048;
-    static std::mutex _register_lock;
-    static std::array<uint32_t, _max_classes> _registered_shares;
-    static std::array<sstring, _max_classes> _registered_names;
-
     priority_class_data& find_or_create_class(const io_priority_class& pc);
 
     // The fields below are going away, they are just here so we can implement deprecated

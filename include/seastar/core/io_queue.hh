@@ -87,7 +87,6 @@ private:
     static std::array<sstring, _max_classes> _registered_names;
 
 public:
-    static io_priority_class register_one_priority_class(sstring name, uint32_t shares);
     static bool rename_one_priority_class(io_priority_class pc, sstring name);
 
 private:

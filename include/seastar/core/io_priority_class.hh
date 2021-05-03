@@ -40,6 +40,8 @@ public:
         return _id;
     }
 
+    static io_priority_class register_one(sstring name, uint32_t shares);
+
     unsigned get_shares() const;
     sstring get_name() const;
 };

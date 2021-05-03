@@ -39,6 +39,9 @@ public:
     io_priority_class_id id() const noexcept {
         return _id;
     }
+
+    unsigned get_shares() const;
+    sstring get_name() const;
 };
 
 const io_priority_class& default_priority_class();

@@ -484,7 +484,18 @@ public:
     /// \param shares the new shares value
     /// \return a future that is ready when the share update is applied
     future<> update_shares_for_class(io_priority_class pc, uint32_t shares);
-    static future<> rename_priority_class(io_priority_class pc, sstring new_name) noexcept;
+
+    /// Renames an io priority class
+    ///
+    /// Renames an `io_priority_class` previously created with register_one_priority_class().
+    ///
+    /// The operation is global and affects all shards.
+    /// The operation affects the exported statistics labels.
+    ///
+    /// \param pc The io priority class to be renamed
+    /// \param new_name The new name for the io priority class
+    /// \return a future that is ready when the io priority class have been renamed
+    future<> rename_priority_class(io_priority_class pc, sstring new_name) noexcept;
 
     void configure(boost::program_options::variables_map config);
 

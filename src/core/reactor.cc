@@ -4356,7 +4356,7 @@ scheduling_group_key_create(scheduling_group_key_config cfg) noexcept {
 
 future<>
 rename_priority_class(io_priority_class pc, sstring new_name) {
-    return reactor::rename_priority_class(pc, new_name);
+    return engine().rename_priority_class(pc, new_name);
 }
 
 future<>

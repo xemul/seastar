@@ -43,4 +43,7 @@ public:
 
 const io_priority_class& default_priority_class();
 
+[[deprecated("Use engine().rename_priority_class()")]]
+future<> rename_priority_class(io_priority_class pc, sstring new_name);
+
 } // namespace seastar

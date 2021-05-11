@@ -158,12 +158,15 @@ class io_group {
 public:
     explicit io_group(io_queue::config io_cfg) noexcept;
 
+    fair_queue_ticket request_fq_ticket(const internal::io_request& req, size_t len) const;
+
 private:
     friend class io_queue;
     fair_group _fg;
     const io_queue::config _config;
 
     static fair_group::config make_fair_group_config(io_queue::config qcfg) noexcept;
+    fair_queue_ticket make_ticket(unsigned weight, size_t sz, size_t len) const noexcept;
 };
 
 inline const io_queue::config& io_queue::get_config() const noexcept {

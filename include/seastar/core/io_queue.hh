@@ -173,7 +173,6 @@ public:
     struct config {
         unsigned max_req_count = std::numeric_limits<int>::max();
         unsigned max_bytes_count = std::numeric_limits<int>::max();
-        unsigned disk_req_write_to_read_multiplier;
     };
     explicit io_group(config cfg, io_queue::config io_cfg) noexcept;
 
@@ -183,7 +182,7 @@ private:
     const unsigned _max_bytes_count;
     const io_queue::config _config;
 
-    static fair_group::config make_fair_group_config(config cfg) noexcept;
+    static fair_group::config make_fair_group_config(config cfg, io_queue::config qcfg) noexcept;
 };
 
 inline size_t io_queue::capacity() const {

@@ -61,26 +61,9 @@ struct iocb;
 using shard_id = unsigned;
 
 class io_priority_class;
-class io_queue;
 class io_desc_read_write;
 class queued_io_request;
-
-class io_group {
-public:
-    struct config {
-        unsigned max_req_count = std::numeric_limits<int>::max();
-        unsigned max_bytes_count = std::numeric_limits<int>::max();
-        unsigned disk_req_write_to_read_multiplier;
-    };
-    explicit io_group(config cfg) noexcept;
-
-private:
-    friend class io_queue;
-    fair_group _fg;
-    const unsigned _max_bytes_count;
-
-    static fair_group::config make_fair_group_config(config cfg) noexcept;
-};
+class io_group;
 
 using io_group_ptr = std::shared_ptr<io_group>;
 class priority_class_data;
@@ -191,6 +174,23 @@ public:
 private:
     config _config;
     static fair_queue::config make_fair_queue_config(config cfg);
+};
+
+class io_group {
+public:
+    struct config {
+        unsigned max_req_count = std::numeric_limits<int>::max();
+        unsigned max_bytes_count = std::numeric_limits<int>::max();
+        unsigned disk_req_write_to_read_multiplier;
+    };
+    explicit io_group(config cfg) noexcept;
+
+private:
+    friend class io_queue;
+    fair_group _fg;
+    const unsigned _max_bytes_count;
+
+    static fair_group::config make_fair_group_config(config cfg) noexcept;
 };
 
 }

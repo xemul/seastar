@@ -490,11 +490,16 @@ priority_class_data& io_queue::find_or_create_class(const io_priority_class& pc)
 }
 
 fair_queue_ticket io_queue::request_fq_ticket(const internal::io_request& req, size_t len) const {
+    return _group->request_fq_ticket(req, len);
+}
+
+fair_queue_ticket io_group::request_fq_ticket(const internal::io_request& req, size_t len) const {
     unsigned weight;
     size_t size;
+
     if (req.is_write()) {
-        weight = _group->_config.disk_req_write_to_read_multiplier;
-        size = _group->_config.disk_bytes_write_to_read_multiplier * len;
+        weight = _config.disk_req_write_to_read_multiplier;
+        size = _config.disk_bytes_write_to_read_multiplier * len;
     } else if (req.is_read()) {
         weight = io_queue::read_request_base_count;
         size = io_queue::read_request_base_count * len;
@@ -502,20 +507,24 @@ fair_queue_ticket io_queue::request_fq_ticket(const internal::io_request& req, s
         throw std::runtime_error(fmt::format("Unrecognized request passing through I/O queue {}", req.opname()));
     }
 
+    return make_ticket(weight, size, len);
+}
+
+fair_queue_ticket io_group::make_ticket(unsigned weight, size_t size, size_t len) const noexcept {
     static thread_local size_t oversize_warning_threshold = 0;
 
-    if (size >= _group->_config.max_bytes_count) {
+    if (size >= _config.max_bytes_count) {
         if (size > oversize_warning_threshold) {
             oversize_warning_threshold = size;
             io_log.warn("oversized request (length {}) submitted. "
                 "dazed and confuzed, trimming its weight from {} down to {}", len,
-                size >> request_ticket_size_shift,
-                _group->_config.max_bytes_count >> request_ticket_size_shift);
+                size >> io_queue::request_ticket_size_shift,
+                _config.max_bytes_count >> io_queue::request_ticket_size_shift);
         }
-        size = _group->_config.max_bytes_count;
+        size = _config.max_bytes_count;
     }
 
-    return fair_queue_ticket(weight, size >> request_ticket_size_shift);
+    return fair_queue_ticket(weight, size >> io_queue::request_ticket_size_shift);
 }
 
 io_queue::request_limits io_queue::get_request_limits() const noexcept {

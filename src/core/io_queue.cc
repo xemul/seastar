@@ -283,7 +283,7 @@ io_queue::notify_requests_finished(fair_queue_ticket& desc) noexcept {
     _fq.notify_requests_finished(desc);
 }
 
-fair_queue::config io_queue::make_fair_queue_config(config iocfg) {
+fair_queue::config io_queue::make_fair_queue_config(const config& iocfg) {
     fair_queue::config cfg;
     cfg.ticket_weight_pace = iocfg.disk_us_per_request / read_request_base_count;
     cfg.ticket_size_pace = (iocfg.disk_us_per_byte * (1 << request_ticket_size_shift)) / read_request_base_count;
@@ -301,7 +301,7 @@ io_queue::io_queue(io_group_ptr group, internal::io_sink& sink)
             _group->_config.disk_bytes_write_multiplier);
 }
 
-fair_group::config io_group::make_fair_group_config(io_queue::config qcfg) noexcept {
+fair_group::config io_group::make_fair_group_config(const io_queue::config& qcfg) noexcept {
     /*
      * It doesn't make sense to configure requests limit higher than
      * it can be if the queue is full of minimal requests. At the same

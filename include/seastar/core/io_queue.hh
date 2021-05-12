@@ -168,7 +168,7 @@ public:
     request_limits get_request_limits() const noexcept;
 
 private:
-    static fair_queue::config make_fair_queue_config(config cfg);
+    static fair_queue::config make_fair_queue_config(const config& cfg);
 };
 
 class io_group {
@@ -182,7 +182,7 @@ private:
     fair_group _fg;
     const io_queue::config _config;
 
-    static fair_group::config make_fair_group_config(io_queue::config qcfg) noexcept;
+    static fair_group::config make_fair_group_config(const io_queue::config& qcfg) noexcept;
     fair_queue_ticket make_ticket(unsigned weight, size_t sz, size_t len) const noexcept;
 };
 

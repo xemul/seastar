@@ -502,7 +502,7 @@ fair_queue_ticket io_group::request_fq_ticket(const internal::io_request& req, s
         size = _config.disk_bytes_write_multiplier * len;
     } else if (req.is_read()) {
         weight = io_queue::read_request_base_count;
-        size = io_queue::read_request_base_count * len;
+        size = _config.disk_bytes_read_multiplier * len;
     } else {
         throw std::runtime_error(fmt::format("Unrecognized request passing through I/O queue {}", req.opname()));
     }
@@ -529,7 +529,7 @@ fair_queue_ticket io_group::make_ticket(unsigned weight, size_t size, size_t len
 
 io_queue::request_limits io_queue::get_request_limits() const noexcept {
     request_limits l;
-    l.max_read = align_down<size_t>(std::min<size_t>(_group->_config.disk_read_saturation_length, _group->_config.max_bytes_count / read_request_base_count), minimal_request_size);
+    l.max_read = align_down<size_t>(std::min<size_t>(_group->_config.disk_read_saturation_length, _group->_config.max_bytes_count / _group->_config.disk_bytes_read_multiplier), minimal_request_size);
     l.max_write = align_down<size_t>(std::min<size_t>(_group->_config.disk_write_saturation_length, _group->_config.max_bytes_count / _group->_config.disk_bytes_write_multiplier), minimal_request_size);
     return l;
 }

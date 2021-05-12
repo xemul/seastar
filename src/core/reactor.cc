@@ -147,6 +147,13 @@ struct mountpoint_params {
     uint64_t write_req_rate = std::numeric_limits<uint64_t>::max();
     uint64_t read_saturation_length = std::numeric_limits<uint64_t>::max();
     uint64_t write_saturation_length = std::numeric_limits<uint64_t>::max();
+
+    struct size_bandwidth {
+        size_t size;
+        uint64_t bandwidth;
+    };
+    std::vector<size_bandwidth> read_bytes_steps;
+    std::vector<size_bandwidth> write_bytes_steps;
 };
 
 }
@@ -167,6 +174,22 @@ struct convert<seastar::mountpoint_params> {
         if (node["write_saturation_length"]) {
             mp.write_saturation_length = parse_memory_size(node["write_saturation_length"].as<std::string>());
         }
+        if (node["read_bandwidth_steps"]) {
+            mp.read_bytes_steps = node["read_bandwidth_steps"].as<std::vector<mountpoint_params::size_bandwidth>>();
+        }
+        if (node["write_bandwidth_steps"]) {
+            mp.write_bytes_steps = node["write_bandwidth_steps"].as<std::vector<mountpoint_params::size_bandwidth>>();
+        }
+        return true;
+    }
+};
+
+template <>
+struct convert<seastar::mountpoint_params::size_bandwidth> {
+    static bool decode(const Node& node, seastar::mountpoint_params::size_bandwidth& sb) {
+        using namespace seastar;
+        sb.size = parse_memory_size(node["size"].as<std::string>());
+        sb.bandwidth = parse_memory_size(node["bandwidth"].as<std::string>());
         return true;
     }
 };
@@ -3676,6 +3699,20 @@ public:
                 cfg.disk_bytes_write_multiplier.set_default((io_queue::read_request_base_count * p.read_bytes_rate) / p.write_bytes_rate);
                 cfg.disk_bytes_read_multiplier.set_default(io_queue::read_request_base_count);
                 cfg.disk_us_per_byte = 1000000. / p.read_bytes_rate;
+
+                for (auto&& st : p.read_bytes_steps) {
+                    if (st.bandwidth > p.read_bytes_rate) {
+                        throw std::invalid_argument(format("read bandwidth for {} should be smaller than {}", st.size, p.read_bytes_rate));
+                    }
+                    cfg.disk_bytes_read_multiplier.add_step(st.size, (io_queue::read_request_base_count * p.read_bytes_rate) / st.bandwidth);
+                }
+
+                for (auto&& st : p.write_bytes_steps) {
+                    if (st.bandwidth > p.write_bytes_rate) {
+                        throw std::invalid_argument(format("write bandwidth for {} should be smaller than {}", st.size, p.write_bytes_rate));
+                    }
+                    cfg.disk_bytes_write_multiplier.add_step(st.size, (io_queue::read_request_base_count * p.read_bytes_rate) / st.bandwidth);
+                }
             }
             if (p.read_req_rate != std::numeric_limits<uint64_t>::max()) {
                 cfg.max_req_count = io_queue::read_request_base_count * per_io_group(p.read_req_rate * latency_goal().count(), nr_groups);

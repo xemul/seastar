@@ -24,6 +24,8 @@ Additionally the following optional properties can be added:
 
 * `read_saturation_length`: read buffer length to saturate the device throughput
 * `write_saturation_length`: write buffer length to saturate the device throughput
+* `read_bandwidth_steps`: clarifications of read bandwidth for smaller requests
+* `write_bandwidth_steps`: clarifications of write bandwidth for smaller requests
 
 Those quantities can be specified in raw form, or followed with a
 suffix (k, M, G, or T).
@@ -38,4 +40,9 @@ disks:
     write_iops: 85000
     write_bandwidth: 510M
     write_saturation_length: 64k
+    read_bandwidth_steps:
+      - size: 16k
+        bandwidth: 450M
+      - size: 8k
+        bandwidth: 400M
 ```

@@ -577,3 +577,6 @@ seastar_add_test (exception_logging
 
 seastar_add_test (closeable
   SOURCES closeable_test.cc)
+
+seastar_add_test (stairs
+  SOURCES stairs_test.cc)

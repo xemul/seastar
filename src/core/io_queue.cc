@@ -298,7 +298,7 @@ io_queue::io_queue(io_group_ptr group, internal::io_sink& sink)
 {
     seastar_logger.debug("Created io queue, multipliers {}:{}",
             _group->_config.disk_req_write_to_read_multiplier,
-            _group->_config.disk_bytes_write_to_read_multiplier);
+            _group->_config.disk_bytes_write_multiplier);
 }
 
 fair_group::config io_group::make_fair_group_config(io_queue::config qcfg) noexcept {
@@ -499,7 +499,7 @@ fair_queue_ticket io_group::request_fq_ticket(const internal::io_request& req, s
 
     if (req.is_write()) {
         weight = _config.disk_req_write_to_read_multiplier;
-        size = _config.disk_bytes_write_to_read_multiplier * len;
+        size = _config.disk_bytes_write_multiplier * len;
     } else if (req.is_read()) {
         weight = io_queue::read_request_base_count;
         size = io_queue::read_request_base_count * len;
@@ -530,7 +530,7 @@ fair_queue_ticket io_group::make_ticket(unsigned weight, size_t size, size_t len
 io_queue::request_limits io_queue::get_request_limits() const noexcept {
     request_limits l;
     l.max_read = align_down<size_t>(std::min<size_t>(_group->_config.disk_read_saturation_length, _group->_config.max_bytes_count / read_request_base_count), minimal_request_size);
-    l.max_write = align_down<size_t>(std::min<size_t>(_group->_config.disk_write_saturation_length, _group->_config.max_bytes_count / _group->_config.disk_bytes_write_to_read_multiplier), minimal_request_size);
+    l.max_write = align_down<size_t>(std::min<size_t>(_group->_config.disk_write_saturation_length, _group->_config.max_bytes_count / _group->_config.disk_bytes_write_multiplier), minimal_request_size);
     return l;
 }
 

@@ -807,6 +807,7 @@ int main(int ac, char** av) {
                 std::cout.flush();
                 auto write_bw = iotune_tests.write_sequential_data(sequential_buffer_size, duration).get0();
                 rates = iotune_tests.get_serial_rates().get0();
+                float write_stdev = rates.stdev_percents();
                 fmt::print("{} MB/s{}\n", uint64_t(write_bw.bytes_per_sec / (1024 * 1024)), accuracy_msg());
 
                 std::optional<uint64_t> write_sat;
@@ -814,7 +815,7 @@ int main(int ac, char** av) {
                 if (write_saturation) {
                     fmt::print("Measuring write saturation length: ");
                     std::cout.flush();
-                    write_sat = iotune_tests.saturate_write(write_bw.bytes_per_sec * (1.0 - rates.stdev_percents()), sequential_buffer_size/2, duration * 0.70).get0();
+                    write_sat = iotune_tests.saturate_write(write_bw.bytes_per_sec * (1.0 - write_stdev), sequential_buffer_size/2, duration * 0.70).get0();
                     fmt::print("{}\n", *write_sat);
                 }
 
@@ -822,6 +823,7 @@ int main(int ac, char** av) {
                 std::cout.flush();
                 auto read_bw = iotune_tests.read_sequential_data(sequential_buffer_size, duration * 0.1).get0();
                 rates = iotune_tests.get_serial_rates().get0();
+                float read_stdev = rates.stdev_percents();
                 fmt::print("{} MB/s{}\n", uint64_t(read_bw.bytes_per_sec / (1024 * 1024)), accuracy_msg());
 
                 std::optional<uint64_t> read_sat;
@@ -829,7 +831,7 @@ int main(int ac, char** av) {
                 if (read_saturation) {
                     fmt::print("Measuring read saturation length: ");
                     std::cout.flush();
-                    read_sat = iotune_tests.saturate_read(read_bw.bytes_per_sec * (1.0 - rates.stdev_percents()), sequential_buffer_size/2, duration * 0.1).get0();
+                    read_sat = iotune_tests.saturate_read(read_bw.bytes_per_sec * (1.0 - read_stdev), sequential_buffer_size/2, duration * 0.1).get0();
                     fmt::print("{}\n", *read_sat);
                 }
 

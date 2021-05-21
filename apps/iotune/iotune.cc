@@ -550,13 +550,20 @@ public:
         });
     }
 
-    future<io_rates> write_sequential_data(unsigned shard, size_t buffer_size, std::chrono::duration<double> duration) {
+    future<io_rates> write_sequential_data(size_t buffer_size, std::chrono::duration<double> duration, unsigned shard = 0, io_rates prev = {}) {
+        if (shard == smp::count) {
+            return make_ready_future<io_rates>(prev);
+        }
+
         return _iotune_test_file.invoke_on(shard, [this, buffer_size, duration] (test_file& tf) {
-            return tf.write_workload(buffer_size, test_file::pattern::sequential, 4 * _test_directory.disks_per_array(), duration, serial_rates);
+            return tf.write_workload(buffer_size, test_file::pattern::sequential, 4 * _test_directory.disks_per_array(), duration / smp::count, serial_rates);
+        }).then([this, buffer_size, duration, shard, prev] (io_rates res) {
+            res += prev;
+            return write_sequential_data(buffer_size, duration, shard + 1, res);
         });
     }
 
-    future<io_rates> read_sequential_data(unsigned shard, size_t buffer_size, std::chrono::duration<double> duration) {
+    future<io_rates> read_sequential_data(size_t buffer_size, std::chrono::duration<double> duration, unsigned shard = 0) {
         return _iotune_test_file.invoke_on(shard, [this, buffer_size, duration] (test_file& tf) {
             return tf.read_workload(buffer_size, test_file::pattern::sequential, 4 * _test_directory.disks_per_array(), duration, serial_rates);
         });
@@ -793,16 +800,12 @@ int main(int ac, char** av) {
                 };
 
                 iotune_tests.create_data_file().get();
+                size_t sequential_buffer_size = 1 << 20;
 
                 fmt::print("Starting Evaluation. This may take a while...\n");
                 fmt::print("Measuring sequential write bandwidth: ");
                 std::cout.flush();
-                io_rates write_bw;
-                size_t sequential_buffer_size = 1 << 20;
-                for (unsigned shard = 0; shard < smp::count; ++shard) {
-                    write_bw += iotune_tests.write_sequential_data(shard, sequential_buffer_size, duration * 0.70 / smp::count).get0();
-                }
-                write_bw.bytes_per_sec /= smp::count;
+                auto write_bw = iotune_tests.write_sequential_data(sequential_buffer_size, duration).get0();
                 rates = iotune_tests.get_serial_rates().get0();
                 fmt::print("{} MB/s{}\n", uint64_t(write_bw.bytes_per_sec / (1024 * 1024)), accuracy_msg());
 
@@ -817,7 +820,7 @@ int main(int ac, char** av) {
 
                 fmt::print("Measuring sequential read bandwidth: ");
                 std::cout.flush();
-                auto read_bw = iotune_tests.read_sequential_data(0, sequential_buffer_size, duration * 0.1).get0();
+                auto read_bw = iotune_tests.read_sequential_data(sequential_buffer_size, duration * 0.1).get0();
                 rates = iotune_tests.get_serial_rates().get0();
                 fmt::print("{} MB/s{}\n", uint64_t(read_bw.bytes_per_sec / (1024 * 1024)), accuracy_msg());
 

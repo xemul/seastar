@@ -231,6 +231,98 @@ public:
     }
 };
 
+// Staircase function approximation
+using points_t = std::vector<std::pair<size_t, io_rates>>;
+
+struct split {
+    double square_diff;
+    points_t points;
+};
+
+static void check_square_diff(const points_t& x, std::vector<size_t>& lengths, split& best) {
+    size_t pos = 0;
+    double sq_diff = 0.0;
+    points_t maybe_res;
+    for (auto& len : lengths) {
+        float bw = std::numeric_limits<float>::infinity();
+        for (size_t i = 0; i < len; i++) {
+            bw = std::min(bw, x[pos + i].second.bytes_per_sec);
+        }
+
+        for (size_t i = 0; i < len; i++) {
+            float diff = x[pos + i].second.bytes_per_sec - bw;
+            sq_diff += diff * diff;
+            if (sq_diff > best.square_diff) {
+                return; // worse, no need to update more
+            }
+        }
+        std::pair<size_t, io_rates> pt(x[pos].first, {bw, 0});
+        maybe_res.push_back(std::move(pt));
+        pos += len;
+    }
+
+    // Discourage longer splits
+    if (sq_diff * lengths.size() < best.square_diff) {
+        best.square_diff = sq_diff;
+        best.points = maybe_res;
+    }
+}
+
+static void split_tail_and_check_square_diff(const points_t& points, unsigned nel, size_t off, std::vector<size_t>& lengths, split& best) {
+    if (nel == 1) {
+        lengths.push_back(points.size() - off);
+        check_square_diff(points, lengths, best);
+        lengths.pop_back();
+    } else {
+        for (size_t i = off + 1; i < points.size(); i++) {
+            lengths.push_back(i - off);
+            split_tail_and_check_square_diff(points, nel - 1, i, lengths, best);
+            lengths.pop_back();
+        }
+    }
+}
+
+static void check_square_diffs_for_staircase(const points_t& points, unsigned nel, split& best) {
+    std::vector<size_t> lengths;
+    split_tail_and_check_square_diff(points, nel, 0, lengths, best);
+}
+
+static void approximate_stairs(uint64_t maximum, float stdev, points_t& points) {
+    // First -- cut the tail that's limited by IOPS
+    for (size_t i = 0; i < points.size() - 1; i++) {
+        if (points[i].second.iops < 0.9 * points[i + 1].second.iops) {
+            continue;
+        }
+
+        fmt::print("IOPS bound since {}\n", points[i].first);
+        points.resize(i);
+        break;
+    }
+
+    // Second -- cut the head that matches maximum (within its deviation)
+    size_t i;
+    for (i = 0; i < points.size(); i++) {
+        if (points[i].second.bytes_per_sec < maximum * (1.0 - stdev)) {
+            break;
+        }
+    }
+
+    fmt::print("Maximum bandwidth before {}\n", points[i].first);
+    points.erase(points.begin(), points.begin() + i);
+
+    if (points.size() >= 1) {
+        // Last -- find the split into 1 or 2 stairs with the least-squares method
+        split best;
+        best.square_diff = std::numeric_limits<double>::infinity();
+        for (unsigned i = 0; i < 2; i++) {
+            check_square_diffs_for_staircase(points, i + 1, best);
+        }
+
+        fmt::print("Best split of {} points\n", best.points.size());
+        points = best.points;
+    }
+}
+
 struct position_generator {
     virtual uint64_t get_pos() = 0;
     virtual bool is_sequential() const = 0;
@@ -895,6 +987,8 @@ int main(int ac, char** av) {
                         buffer_size >>= 1;
                     }
 
+                    approximate_stairs(read_bw.bytes_per_sec, read_stdev, read_bw_stairs);
+
                     for (auto&& res : read_bw_stairs) {
                         fmt::print("  {}: {} MB/s\n", res.first, uint64_t(res.second.bytes_per_sec / (1024 * 1024)));
                     }
@@ -915,6 +1009,8 @@ int main(int ac, char** av) {
                         write_bw_stairs.push_back(std::pair<size_t, io_rates>(buffer_size, std::move(write_bw)));
                         buffer_size >>= 1;
                     }
+
+                    approximate_stairs(read_bw.bytes_per_sec, write_stdev, write_bw_stairs);
 
                     for (auto&& res : write_bw_stairs) {
                         fmt::print("  {}: {} MB/s\n", res.first, uint64_t(res.second.bytes_per_sec / (1024 * 1024)));

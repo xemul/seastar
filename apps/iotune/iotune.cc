@@ -620,6 +620,8 @@ struct disk_descriptor {
     uint64_t write_bw;
     std::optional<uint64_t> read_sat_len;
     std::optional<uint64_t> write_sat_len;
+    std::vector<std::pair<size_t, io_rates>> read_bw_stairs;
+    std::vector<std::pair<size_t, io_rates>> write_bw_stairs;
 };
 
 void string_to_file(sstring conf_file, sstring buf) {
@@ -657,6 +659,28 @@ void write_property_file(sstring conf_file, std::vector<disk_descriptor> disk_de
         }
         if (desc.write_sat_len) {
             out << YAML::Key << "write_saturation_length" << YAML::Value << *desc.write_sat_len;
+        }
+        if (desc.read_bw_stairs.size() != 0) {
+            out << YAML::Key << "read_bandwidth_steps";
+            out << YAML::BeginSeq;
+            for (auto&& step : desc.read_bw_stairs) {
+                out << YAML::BeginMap;
+                out << YAML::Key << "size" << YAML::Value << step.first;
+                out << YAML::Key << "bandwidth" << YAML::Value << uint64_t(step.second.bytes_per_sec);
+                out << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
+        }
+        if (desc.write_bw_stairs.size() != 0) {
+            out << YAML::Key << "write_bandwidth_steps";
+            out << YAML::BeginSeq;
+            for (auto&& step : desc.write_bw_stairs) {
+                out << YAML::BeginMap;
+                out << YAML::Key << "size" << YAML::Value << step.first;
+                out << YAML::Key << "bandwidth" << YAML::Value << uint64_t(step.second.bytes_per_sec);
+                out << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
         }
         out << YAML::EndMap;
     }
@@ -705,6 +729,7 @@ int main(int ac, char** av) {
         ("fs-check", bpo::bool_switch(&fs_check), "perform FS check only")
         ("accuracy", bpo::value<unsigned>()->default_value(3), "acceptable deviation of measurements (percents)")
         ("saturation", bpo::value<sstring>()->default_value(""), "measure saturation lengths (read | write | both) (this is very slow!)")
+        ("elaborate-bandwidth", bpo::value<sstring>()->default_value(""), "elaborate bandwidth measurement (read | write | both) (this is very slow!)")
     ;
 
     return app.run(ac, av, [&] {
@@ -715,6 +740,7 @@ int main(int ac, char** av) {
             auto duration = std::chrono::duration<double>(configuration["duration"].as<unsigned>() * 1s);
             auto accuracy = configuration["accuracy"].as<unsigned>();
             auto saturation = configuration["saturation"].as<sstring>();
+            auto bw_stairs = configuration["elaborate-bandwidth"].as<sstring>();
 
             bool read_saturation, write_saturation;
             if (saturation == "") {
@@ -731,6 +757,24 @@ int main(int ac, char** av) {
                 write_saturation = true;
             } else {
                 fmt::print("Bad --saturation value\n");
+                return 1;
+            }
+
+            bool read_stairs, write_stairs;
+            if (bw_stairs == "") {
+                read_stairs = false;
+                write_stairs = false;
+            } else if (bw_stairs == "both") {
+                read_stairs = true;
+                write_stairs = true;
+            } else if (bw_stairs == "read") {
+                read_stairs = true;
+                write_stairs = false;
+            } else if (bw_stairs == "write") {
+                read_stairs = false;
+                write_stairs = true;
+            } else {
+                fmt::print("Bad --bandwidth value\n");
                 return 1;
             }
 
@@ -835,6 +879,48 @@ int main(int ac, char** av) {
                     fmt::print("{}\n", *read_sat);
                 }
 
+                std::vector<std::pair<size_t, io_rates>> read_bw_stairs;
+                if (read_stairs) {
+                    fmt::print("Elaborating read bandwidth...\n");
+
+                    size_t buffer_size = sequential_buffer_size >> 1;
+                    while (true) {
+                        if (buffer_size < test_directory.minimum_io_size()) {
+                            break;
+                        }
+                        auto read_bw = iotune_tests.read_random_data(buffer_size, duration * 0.1).get0();
+                        iotune_tests.get_sharded_worst_rates().get0();
+                        fmt::print("    {} -> {} MB/s {} IOPS\n", buffer_size, uint64_t(read_bw.bytes_per_sec / (1024 * 1024)), read_bw.iops);
+                        read_bw_stairs.push_back(std::pair<size_t, io_rates>(buffer_size, std::move(read_bw)));
+                        buffer_size >>= 1;
+                    }
+
+                    for (auto&& res : read_bw_stairs) {
+                        fmt::print("  {}: {} MB/s\n", res.first, uint64_t(res.second.bytes_per_sec / (1024 * 1024)));
+                    }
+                }
+
+                std::vector<std::pair<size_t, io_rates>> write_bw_stairs;
+                if (write_stairs) {
+                    fmt::print("Elaborating write bandwidth...\n");
+
+                    size_t buffer_size = sequential_buffer_size >> 1;
+                    while (true) {
+                        if (buffer_size < test_directory.minimum_io_size()) {
+                            break;
+                        }
+                        auto write_bw = iotune_tests.read_random_data(buffer_size, duration * 0.6).get0();
+                        iotune_tests.get_sharded_worst_rates().get0();
+                        fmt::print("    {} -> {} MB/s {} IOPS\n", buffer_size, uint64_t(write_bw.bytes_per_sec / (1024 * 1024)), write_bw.iops);
+                        write_bw_stairs.push_back(std::pair<size_t, io_rates>(buffer_size, std::move(write_bw)));
+                        buffer_size >>= 1;
+                    }
+
+                    for (auto&& res : write_bw_stairs) {
+                        fmt::print("  {}: {} MB/s\n", res.first, uint64_t(res.second.bytes_per_sec / (1024 * 1024)));
+                    }
+                }
+
                 fmt::print("Measuring random write IOPS: ");
                 std::cout.flush();
                 auto write_iops = iotune_tests.write_random_data(test_directory.minimum_io_size(), duration * 0.1).get0();
@@ -852,9 +938,11 @@ int main(int ac, char** av) {
                 desc.read_iops = read_iops.iops;
                 desc.read_bw = read_bw.bytes_per_sec;
                 desc.read_sat_len = read_sat;
+                desc.read_bw_stairs = std::move(read_bw_stairs);
                 desc.write_iops = write_iops.iops;
                 desc.write_bw = write_bw.bytes_per_sec;
                 desc.write_sat_len = write_sat;
+                desc.write_bw_stairs = std::move(write_bw_stairs);
                 disk_descriptors.push_back(std::move(desc));
             }
 

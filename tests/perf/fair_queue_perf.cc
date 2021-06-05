@@ -58,7 +58,7 @@ struct local_fq_entry {
     local_fq_entry(unsigned weight, unsigned index, Func&& f)
         : submit(std::move(f)) {}
 
-    void dispatch() noexcept {
+    void dispatch(fair_queue_ticket) noexcept {
         submit();
         delete this;
     }

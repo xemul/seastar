@@ -81,7 +81,7 @@ public:
     // before the queue is destroyed.
     unsigned tick(unsigned n = 1) {
         unsigned processed = 0;
-        _fq.dispatch_requests([] (fair_queue_entry& ent) {
+        _fq.dispatch_requests([] (fair_queue_entry& ent, fair_queue_ticket t) {
             boost::intrusive::get_parent_from_member(&ent, &request::fqent)->submit();
         }, [] (const fair_queue_entry& ent) -> fair_queue_ticket {
             return boost::intrusive::get_parent_from_member(&ent, &request::fqent)->ticket;
@@ -97,7 +97,7 @@ public:
                 _fq.notify_request_finished(req.ticket);
             }
 
-            _fq.dispatch_requests([] (fair_queue_entry& ent) {
+            _fq.dispatch_requests([] (fair_queue_entry& ent, fair_queue_ticket t) {
                 boost::intrusive::get_parent_from_member(&ent, &request::fqent)->submit();
             }, [] (const fair_queue_entry& ent) -> fair_queue_ticket {
                 return boost::intrusive::get_parent_from_member(&ent, &request::fqent)->ticket;

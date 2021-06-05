@@ -248,7 +248,7 @@ void fair_queue::notify_request_cancelled(fair_queue_ticket q_ticket) noexcept {
     _resources_queued -= q_ticket;
 }
 
-void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb, std::function<fair_queue_ticket(const fair_queue_entry&)> get_ticket) {
+void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&, fair_queue_ticket)> cb, std::function<fair_queue_ticket(const fair_queue_entry&)> get_ticket) {
     while (!_handles.empty()) {
         priority_class_ptr h = _handles.top();
         if (h->_queue.empty()) {
@@ -287,7 +287,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb, st
             push_priority_class(h);
         }
 
-        cb(req);
+        cb(req, ticket);
     }
 }
 

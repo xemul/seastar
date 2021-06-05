@@ -69,12 +69,6 @@ private:
 
     priority_class_data& find_or_create_class(const io_priority_class& pc);
 
-    // The fields below are going away, they are just here so we can implement deprecated
-    // functions that used to be provided by the fair_queue and are going away (from both
-    // the fair_queue and the io_queue). Double-accounting for now will allow for easier
-    // decoupling and is temporary
-    size_t _queued_requests = 0;
-    size_t _requests_executing = 0;
     unsigned _cancelled_requests = 0;
 public:
     // We want to represent the fact that write requests are (maybe) more expensive
@@ -119,13 +113,19 @@ public:
 
     [[deprecated("I/O queue users should not track individual requests, but resources (weight, size) passing through the queue")]]
     size_t queued_requests() const {
-        return _queued_requests;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        return _fq.waiters() - _cancelled_requests;
+#pragma GCC diagnostic pop
     }
 
     // How many requests are sent to disk but not yet returned.
     [[deprecated("I/O queue users should not track individual requests, but resources (weight, size) passing through the queue")]]
     size_t requests_currently_executing() const {
-        return _requests_executing;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        return _fq.requests_currently_executing();
+#pragma GCC diagnostic pop
     }
 
     void notify_requests_finished(fair_queue_ticket& desc) noexcept;

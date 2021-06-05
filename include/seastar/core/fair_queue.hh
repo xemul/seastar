@@ -137,8 +137,6 @@ public:
             bi::constant_time_size<false>,
             bi::cache_last<true>,
             bi::member_hook<fair_queue_entry, bi::slist_member_hook<>, &fair_queue_entry::_hook>>;
-
-    fair_queue_ticket ticket() const noexcept { return _ticket; }
 };
 
 /// \cond internal

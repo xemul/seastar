@@ -161,6 +161,7 @@ class queued_io_request : private internal::io_request {
     io_queue& _ioq;
     size_t _len;
     std::chrono::steady_clock::time_point _started;
+    fair_queue_ticket _ticket;
     fair_queue_entry _fq_entry;
     internal::cancellable_queue::link _intent;
     std::unique_ptr<io_desc_read_write> _desc;
@@ -173,10 +174,11 @@ public:
         , _ioq(q)
         , _len(l)
         , _started(std::chrono::steady_clock::now())
-        , _fq_entry(_ioq.request_fq_ticket(*this, _len))
-        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, _fq_entry.ticket()))
+        , _ticket(_ioq.request_fq_ticket(*this, _len))
+        , _fq_entry(_ticket)
+        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, _ticket))
     {
-        io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), _len, _fq_entry.ticket());
+        io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), _len, _ticket);
     }
 
     queued_io_request(queued_io_request&&) = delete;
@@ -610,7 +612,7 @@ void io_queue::cancel_request(queued_io_request& req) noexcept {
 
 void io_queue::complete_cancelled_request(queued_io_request& req) noexcept {
     _cancelled_requests--;
-    _fq.notify_request_finished(req.queue_entry().ticket());
+    _fq.notify_request_finished(fair_queue_ticket{});
 }
 
 future<>

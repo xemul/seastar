@@ -293,7 +293,6 @@ void io_sink::submit(io_completion* desc, io_request req) noexcept {
 
 void
 io_queue::notify_request_finished(fair_queue_ticket ticket) noexcept {
-    _requests_executing--;
     _fq.notify_request_finished(ticket);
 }
 
@@ -584,7 +583,6 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
         queued_req->set_intent(cq);
         queued_req.release();
         pclass.on_queue();
-        _queued_requests++;
         return fut;
     });
 }
@@ -596,13 +594,10 @@ void io_queue::poll_io_queue() {
 }
 
 void io_queue::submit_request(io_desc_read_write* desc, internal::io_request req) noexcept {
-    _queued_requests--;
-    _requests_executing++;
     _sink.submit(desc, std::move(req));
 }
 
 void io_queue::cancel_request(queued_io_request& req) noexcept {
-    _queued_requests--;
     _pending_cancellations++;
     _fq.notify_request_cancelled(req.queue_entry());
 }

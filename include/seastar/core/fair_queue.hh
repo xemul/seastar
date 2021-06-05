@@ -121,6 +121,7 @@ SEASTAR_CONCEPT(
 template <typename Req>
 concept Dispatcheable = requires (Req rq) {
     { rq.dispatch() } noexcept -> void;
+    { rq.ticket_for_dispatch() } noexcept -> std::same_as<fair_queue_ticket>;
 };
 )
 
@@ -352,14 +353,16 @@ public:
 
             auto& ent = h->_queue.front();
             Request& req = Request::from_fq_entry(ent);
-            if (!grab_capacity(ent._ticket)) {
+            auto ticket = req.ticket_for_dispatch();
+
+            if (!grab_capacity(ticket)) {
                 break;
             }
 
             pop_priority_class(h);
             h->_queue.pop_front();
 
-            account_dispatched(ent._ticket, *h);
+            account_dispatched(ticket, *h);
 
             if (!h->_queue.empty()) {
                 push_priority_class(h);

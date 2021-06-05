@@ -209,6 +209,9 @@ public:
 
     future<size_t> get_future() noexcept { return _desc->get_future(); }
     fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
+    fair_queue_ticket ticket_for_dispatch() const noexcept {
+        return _ticket;
+    }
 
     static queued_io_request& from_fq_entry(fair_queue_entry& ent) noexcept {
         return *boost::intrusive::get_parent_from_member(&ent, &queued_io_request::_fq_entry);

@@ -176,7 +176,6 @@ public:
         , _len(l)
         , _started(std::chrono::steady_clock::now())
         , _ticket(_ioq.request_fq_ticket(*this, _len))
-        , _fq_entry(_ticket)
         , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, _ticket))
     {
         io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), _len, _ticket);
@@ -597,7 +596,7 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
             cq = &intent->find_or_create_cancellable_queue(dev_id(), pc.id());
         }
 
-        _fq.queue(pclass.pclass(), queued_req->queue_entry());
+        _fq.queue(pclass.pclass(), queued_req->queue_entry(), queued_req->ticket_for_queue());
         queued_req->set_intent(cq);
         queued_req.release();
         pclass.on_queue();
@@ -615,7 +614,7 @@ void io_queue::submit_request(io_desc_read_write* desc, internal::io_request req
 
 void io_queue::cancel_request(queued_io_request& req) noexcept {
     _pending_cancellations++;
-    _fq.notify_request_cancelled(req.queue_entry());
+    _fq.notify_request_cancelled(req.ticket_for_queue());
 }
 
 void io_queue::complete_cancelled_request(queued_io_request& req) noexcept {

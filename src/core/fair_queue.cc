@@ -236,13 +236,13 @@ fair_queue_ticket fair_queue::resources_currently_executing() const {
     return _resources_executing;
 }
 
-void fair_queue::queue(priority_class_ptr pc, fair_queue_entry& ent) {
+void fair_queue::queue(priority_class_ptr pc, fair_queue_entry& ent, fair_queue_ticket q_ticket) {
     // We need to return a future in this function on which the caller can wait.
     // Since we don't know which queue we will use to execute the next request - if ours or
     // someone else's, we need a separate promise at this point.
     push_priority_class(pc);
     pc->_queue.push_back(ent);
-    _resources_queued += ent._ticket;
+    _resources_queued += q_ticket;
     _requests_queued++;
 }
 
@@ -252,9 +252,8 @@ void fair_queue::notify_request_finished(fair_queue_ticket x_ticket) noexcept {
     _group.release_capacity(x_ticket);
 }
 
-void fair_queue::notify_request_cancelled(fair_queue_entry& ent) noexcept {
-    _resources_queued -= ent._ticket;
-    ent._ticket = fair_queue_ticket();
+void fair_queue::notify_request_cancelled(fair_queue_ticket q_ticket) noexcept {
+    _resources_queued -= q_ticket;
 }
 
 void fair_queue::account_dispatched(fair_queue_ticket q_ticket, fair_queue_ticket d_ticket, priority_class& pclass) {

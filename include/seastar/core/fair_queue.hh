@@ -329,7 +329,8 @@ public:
     void notify_request_cancelled(fair_queue_entry& ent) noexcept;
 
     /// Try to execute new requests if there is capacity left in the queue.
-    void dispatch_requests(std::function<void(fair_queue_entry&)> cb);
+    void dispatch_requests(std::function<void(fair_queue_entry&)> cb,
+                            std::function<fair_queue_ticket(const fair_queue_entry&)> ticket);
 
     clock_type next_pending_aio() const noexcept {
         if (_pending) {

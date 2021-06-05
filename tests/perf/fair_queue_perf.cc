@@ -110,6 +110,8 @@ future<> perf_fair_queue::test(bool loc) {
                 local_fq_entry* le = boost::intrusive::get_parent_from_member(&ent, &local_fq_entry::ent);
                 le->submit();
                 delete le;
+            }, [] (const fair_queue_entry& ent) {
+                return fair_queue_ticket{1, 1};
             });
             return make_ready_future<>();
         });

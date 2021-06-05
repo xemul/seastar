@@ -208,7 +208,7 @@ public:
 
     future<size_t> get_future() noexcept { return _desc->get_future(); }
     fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
-    fair_queue_ticket ticket() const noexcept { return _ticket; }
+    fair_queue_ticket ticket_for_queue() const noexcept { return _ticket; }
 
     fair_queue_ticket ticket_for_dispatch() const noexcept {
         return _ticket;
@@ -586,7 +586,7 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
             cq = &intent->find_or_create_cancellable_queue(dev_id(), pc.id());
         }
 
-        _fq.queue(pclass.pclass(), queued_req->queue_entry(), queued_req->ticket());
+        _fq.queue(pclass.pclass(), queued_req->queue_entry(), queued_req->ticket_for_queue());
         queued_req->set_intent(cq);
         queued_req.release();
         pclass.on_queue();
@@ -608,7 +608,7 @@ void io_queue::submit_request(io_desc_read_write* desc, internal::io_request req
 
 void io_queue::cancel_request(queued_io_request& req) noexcept {
     _cancelled_requests++;
-    _fq.notify_request_cancelled(req.ticket());
+    _fq.notify_request_cancelled(req.ticket_for_queue());
 }
 
 void io_queue::complete_cancelled_request(queued_io_request& req) noexcept {

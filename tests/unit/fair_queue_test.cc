@@ -45,7 +45,6 @@ struct request {
     template <typename Func>
     request(unsigned weight, unsigned index, Func&& h)
         : ticket(weight, 0)
-        , fqent(ticket)
         , handle(std::move(h))
         , index(index)
     {}
@@ -133,7 +132,7 @@ public:
             }
         });
 
-        _fq.queue(cl, req->fqent);
+        _fq.queue(cl, req->fqent, req->ticket);
         req.release();
     }
 

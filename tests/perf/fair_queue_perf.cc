@@ -56,8 +56,7 @@ struct local_fq_entry {
 
     template <typename Func>
     local_fq_entry(unsigned weight, unsigned index, Func&& f)
-        : ent(seastar::fair_queue_ticket(weight, index))
-        , submit(std::move(f)) {}
+        : submit(std::move(f)) {}
 };
 
 struct perf_fair_queue {
@@ -89,7 +88,7 @@ future<> perf_fair_queue::test(bool loc) {
                 local.executed++;
                 local.queue(loc).notify_requests_finished(seastar::fair_queue_ticket{1, 1});
             });
-            local.queue(loc).queue(local.pclass, req->ent);
+            local.queue(loc).queue(local.pclass, req->ent, fair_queue_ticket{1, 1});
             req.release();
             return make_ready_future<>();
         });

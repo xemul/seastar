@@ -116,12 +116,9 @@ public:
 class fair_queue_entry {
     friend class fair_queue;
 
-    fair_queue_ticket _ticket;
     bi::slist_member_hook<> _hook;
 
 public:
-    fair_queue_entry(fair_queue_ticket t) noexcept
-        : _ticket(std::move(t)) {}
     using container_list_t = bi::slist<fair_queue_entry,
             bi::constant_time_size<false>,
             bi::cache_last<true>,
@@ -321,12 +318,12 @@ public:
     ///
     /// The user of this interface is supposed to call \ref notify_requests_finished when the
     /// request finishes executing - regardless of success or failure.
-    void queue(priority_class_ptr pc, fair_queue_entry& ent);
+    void queue(priority_class_ptr pc, fair_queue_entry& ent, fair_queue_ticket q_ticket);
 
     /// Notifies that ont request finished
     /// \param desc an instance of \c fair_queue_ticket structure describing the request that just finished.
     void notify_requests_finished(fair_queue_ticket desc, unsigned nr = 1) noexcept;
-    void notify_request_cancelled(fair_queue_entry& ent) noexcept;
+    void notify_request_cancelled(fair_queue_ticket q_ticket) noexcept;
 
     /// Try to execute new requests if there is capacity left in the queue.
     void dispatch_requests(std::function<void(fair_queue_entry&)> cb,

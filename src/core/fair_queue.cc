@@ -251,10 +251,10 @@ void fair_queue::queue(priority_class_ptr pc, fair_queue_entry& ent) {
     _requests_queued++;
 }
 
-void fair_queue::notify_requests_finished(fair_queue_ticket desc, unsigned nr) noexcept {
-    _resources_executing -= desc;
-    _requests_executing -= nr;
-    _group.release_capacity(desc);
+void fair_queue::notify_request_finished(fair_queue_ticket x_ticket) noexcept {
+    _resources_executing -= x_ticket;
+    _requests_executing--;
+    _group.release_capacity(x_ticket);
 }
 
 void fair_queue::notify_request_cancelled(fair_queue_entry& ent) noexcept {

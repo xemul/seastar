@@ -128,7 +128,7 @@ public:
 #pragma GCC diagnostic pop
     }
 
-    void notify_requests_finished(fair_queue_ticket& desc) noexcept;
+    void notify_request_finished(fair_queue_ticket x_ticket) noexcept;
 
     // Dispatch requests that are pending in the I/O queue
     void poll_io_queue();

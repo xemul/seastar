@@ -84,6 +84,8 @@ public:
         unsigned processed = 0;
         _fq.dispatch_requests([] (fair_queue_entry& ent) {
             boost::intrusive::get_parent_from_member(&ent, &request::fqent)->submit();
+        }, [] (const fair_queue_entry& ent) -> fair_queue_ticket {
+            return boost::intrusive::get_parent_from_member(&ent, &request::fqent)->ticket;
         });
 
         for (unsigned i = 0; i < n; ++i) {
@@ -98,6 +100,8 @@ public:
 
             _fq.dispatch_requests([] (fair_queue_entry& ent) {
                 boost::intrusive::get_parent_from_member(&ent, &request::fqent)->submit();
+            }, [] (const fair_queue_entry& ent) -> fair_queue_ticket {
+                return boost::intrusive::get_parent_from_member(&ent, &request::fqent)->ticket;
             });
         }
         return processed;

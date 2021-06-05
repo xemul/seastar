@@ -105,7 +105,7 @@ future<> perf_fair_queue::test(bool loc) {
         local.executed = 0;
 
         return do_until([&local] { return local.executed == requests_to_dispatch; }, [&local, loc] {
-            local.queue(loc).dispatch_requests([] (fair_queue_entry& ent) {
+            local.queue(loc).dispatch_requests([] (fair_queue_entry& ent, fair_queue_ticket) {
                 local_fq_entry* le = boost::intrusive::get_parent_from_member(&ent, &local_fq_entry::ent);
                 le->submit();
                 delete le;

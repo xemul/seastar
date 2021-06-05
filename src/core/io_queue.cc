@@ -117,10 +117,9 @@ class io_desc_read_write final : public io_completion {
     promise<size_t> _pr;
 
 public:
-    io_desc_read_write(io_queue& ioq, priority_class_data& pc, fair_queue_ticket ticket)
+    io_desc_read_write(io_queue& ioq, priority_class_data& pc)
         : _ioq(ioq)
         , _pclass(pc)
-        , _fq_ticket(ticket)
     {}
 
     virtual void set_exception(std::exception_ptr eptr) noexcept override {
@@ -146,10 +145,11 @@ public:
         delete this;
     }
 
-    void dispatch(size_t len, std::chrono::steady_clock::time_point queued) noexcept {
+    void dispatch(size_t len, std::chrono::steady_clock::time_point queued, fair_queue_ticket x_ticket) noexcept {
         auto now = std::chrono::steady_clock::now();
         _pclass.on_dispatch(len, std::chrono::duration_cast<std::chrono::duration<double>>(now - queued));
         _dispatched = now;
+        _fq_ticket = x_ticket;
     }
 
     future<size_t> get_future() {
@@ -175,14 +175,14 @@ public:
         , _len(l)
         , _started(std::chrono::steady_clock::now())
         , _ticket(_ioq.request_fq_ticket_for_queue(*this, _len))
-        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, _ticket))
+        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc))
     {
         io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), _len, _ticket);
     }
 
     queued_io_request(queued_io_request&&) = delete;
 
-    void dispatch() noexcept {
+    void dispatch(fair_queue_ticket x_ticket) noexcept {
         if (is_cancelled()) {
             _ioq.complete_cancelled_request(*this);
             delete this;
@@ -191,7 +191,7 @@ public:
 
         io_log.trace("dev {} : req {} submit", _ioq.dev_id(), fmt::ptr(&*_desc));
         _intent.maybe_dequeue();
-        _desc->dispatch(_len, _started);
+        _desc->dispatch(_len, _started, x_ticket);
         _ioq.submit_request(_desc.release(), std::move(*this));
         delete this;
     }
@@ -595,8 +595,8 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
 }
 
 void io_queue::poll_io_queue() {
-    _fq.dispatch_requests([] (fair_queue_entry& fqe) {
-        queued_io_request::from_fq_entry(fqe).dispatch();
+    _fq.dispatch_requests([] (fair_queue_entry& fqe, fair_queue_ticket x_ticket) {
+        queued_io_request::from_fq_entry(fqe).dispatch(x_ticket);
     }, [] (const fair_queue_entry& fqe) -> fair_queue_ticket {
         return queued_io_request::from_fq_entry(fqe).ticket_for_dispatch();
     });

@@ -122,7 +122,7 @@ public:
 SEASTAR_CONCEPT(
 template <typename Req>
 concept Dispatcheable = requires (Req rq) {
-    { rq.dispatch() } noexcept -> std::same_as<void>;
+    { rq.dispatch(fair_queue_ticket{}) } noexcept -> std::same_as<void>;
     { rq.ticket_for_queue() } noexcept -> std::same_as<fair_queue_ticket>;
     { rq.ticket_for_dispatch() } noexcept -> std::same_as<fair_queue_ticket>;
 };
@@ -368,7 +368,7 @@ public:
                 push_priority_class(h);
             }
 
-            req.dispatch();
+            req.dispatch(ticket);
         }
     }
 

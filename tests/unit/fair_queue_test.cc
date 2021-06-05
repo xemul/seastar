@@ -49,7 +49,7 @@ struct request {
         , index(index)
     {}
 
-    void dispatch() noexcept {
+    void dispatch(fair_queue_ticket) noexcept {
         handle(*this);
         delete this;
     }

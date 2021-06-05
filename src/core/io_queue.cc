@@ -211,7 +211,15 @@ public:
     fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
     fair_queue_ticket ticket() const noexcept { return _ticket; }
 
+    fair_queue_ticket ticket_for_dispatch() const noexcept {
+        return _ticket;
+    }
+
     static queued_io_request& from_fq_entry(fair_queue_entry& ent) noexcept {
+        return *boost::intrusive::get_parent_from_member(&ent, &queued_io_request::_fq_entry);
+    }
+
+    static const queued_io_request& from_fq_entry(const fair_queue_entry& ent) noexcept {
         return *boost::intrusive::get_parent_from_member(&ent, &queued_io_request::_fq_entry);
     }
 
@@ -590,6 +598,8 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
 void io_queue::poll_io_queue() {
     _fq.dispatch_requests([] (fair_queue_entry& fqe) {
         queued_io_request::from_fq_entry(fqe).dispatch();
+    }, [] (const fair_queue_entry& fqe) -> fair_queue_ticket {
+        return queued_io_request::from_fq_entry(fqe).ticket_for_dispatch();
     });
 }
 

@@ -75,6 +75,7 @@ private:
     // decoupling and is temporary
     size_t _queued_requests = 0;
     size_t _requests_executing = 0;
+    unsigned _cancelled_requests = 0;
 public:
     // We want to represent the fact that write requests are (maybe) more expensive
     // than read requests. To avoid dealing with floating point math we will scale one

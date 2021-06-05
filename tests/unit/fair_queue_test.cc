@@ -37,13 +37,15 @@ using namespace seastar;
 using namespace std::chrono_literals;
 
 struct request {
+    fair_queue_ticket ticket;
     fair_queue_entry fqent;
     std::function<void(request& req)> handle;
     unsigned index;
 
     template <typename Func>
     request(unsigned weight, unsigned index, Func&& h)
-        : fqent(fair_queue_ticket(weight, 0))
+        : ticket(weight, 0)
+        , fqent(ticket)
         , handle(std::move(h))
         , index(index)
     {}
@@ -91,7 +93,7 @@ public:
             for (auto& req : curr) {
                 processed++;
                 _results[req.index]++;
-                _fq.notify_requests_finished(req.fqent.ticket());
+                _fq.notify_requests_finished(req.ticket);
             }
 
             _fq.dispatch_requests([] (fair_queue_entry& ent) {
@@ -123,7 +125,7 @@ public:
             } catch (...) {
                 auto eptr = std::current_exception();
                 _exceptions[index].push_back(eptr);
-                _fq.notify_requests_finished(req.fqent.ticket());
+                _fq.notify_requests_finished(req.ticket);
             }
         });
 

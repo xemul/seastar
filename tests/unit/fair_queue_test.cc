@@ -94,7 +94,7 @@ public:
             for (auto& req : curr) {
                 processed++;
                 _results[req.index]++;
-                _fq.notify_requests_finished(req.ticket);
+                _fq.notify_request_finished(req.ticket);
             }
 
             _fq.dispatch_requests([] (fair_queue_entry& ent) {
@@ -128,7 +128,7 @@ public:
             } catch (...) {
                 auto eptr = std::current_exception();
                 _exceptions[index].push_back(eptr);
-                _fq.notify_requests_finished(req.ticket);
+                _fq.notify_request_finished(req.ticket);
             }
         });
 

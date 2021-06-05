@@ -603,10 +603,12 @@ void io_queue::submit_request(io_desc_read_write* desc, internal::io_request req
 
 void io_queue::cancel_request(queued_io_request& req) noexcept {
     _queued_requests--;
+    _pending_cancellations++;
     _fq.notify_request_cancelled(req.queue_entry());
 }
 
 void io_queue::complete_cancelled_request(queued_io_request& req) noexcept {
+    _pending_cancellations--;
     _fq.notify_request_finished(req.queue_entry().ticket());
 }
 

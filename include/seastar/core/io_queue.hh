@@ -74,6 +74,11 @@ private:
     // decoupling and is temporary
     size_t _queued_requests = 0;
     size_t _requests_executing = 0;
+    // This counts the number of requests that had been cancelled, but that
+    // haven't yet been removed from the fair-queue. This is needed to return
+    // correct value from queued_requests(), as fair queue accounts cancelled
+    // requests as queued until dispatched
+    unsigned _pending_cancellations = 0;
 public:
     // We want to represent the fact that write requests are (maybe) more expensive
     // than read requests. To avoid dealing with floating point math we will scale one

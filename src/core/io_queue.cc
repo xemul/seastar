@@ -175,7 +175,7 @@ public:
         , _ioq(q)
         , _len(l)
         , _started(std::chrono::steady_clock::now())
-        , _ticket(_ioq.request_fq_ticket(*this, _len))
+        , _ticket(_ioq.request_fq_ticket_for_queue(*this, _len))
         , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, _ticket))
     {
         io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), _len, _ticket);
@@ -538,7 +538,7 @@ priority_class_data& io_queue::find_or_create_class(const io_priority_class& pc)
     return *_priority_classes[id];
 }
 
-fair_queue_ticket io_queue::request_fq_ticket(const internal::io_request& req, size_t len) const {
+fair_queue_ticket io_queue::request_fq_ticket_for_queue(const internal::io_request& req, size_t len) const {
     return _group->request_fq_ticket(req, len);
 }
 

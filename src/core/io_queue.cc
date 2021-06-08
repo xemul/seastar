@@ -127,7 +127,7 @@ public:
     virtual void set_exception(std::exception_ptr eptr) noexcept override {
         io_log.trace("dev {} : req {} error", _ioq.dev_id(), fmt::ptr(this));
         _pclass.on_error();
-        _ioq.notify_request_finished(_fq_ticket);
+        _ioq.notify_request_finished(_fq_ticket, _dnl);
         _pr.set_exception(eptr);
         delete this;
     }
@@ -136,7 +136,7 @@ public:
         io_log.trace("dev {} : req {} complete", _ioq.dev_id(), fmt::ptr(this));
         auto now = std::chrono::steady_clock::now();
         _pclass.on_complete(std::chrono::duration_cast<std::chrono::duration<double>>(now - _dispatched));
-        _ioq.notify_request_finished(_fq_ticket);
+        _ioq.notify_request_finished(_fq_ticket, _dnl);
         _pr.set_value(res);
         delete this;
     }
@@ -297,10 +297,17 @@ void io_sink::submit(io_completion* desc, io_request req) noexcept {
     }
 }
 
+void io_mixer::inc(io_direction_and_length dnl) noexcept {
+}
+
+void io_mixer::dec(io_direction_and_length dnl) noexcept {
+}
+
 } // internal namespace
 
 void
-io_queue::notify_request_finished(fair_queue_ticket ticket) noexcept {
+io_queue::notify_request_finished(fair_queue_ticket ticket, internal::io_direction_and_length dnl) noexcept {
+    _mixer.dec(dnl);
     _fq.notify_request_finished(ticket);
 }
 
@@ -315,6 +322,7 @@ io_queue::io_queue(io_group_ptr group, internal::io_sink& sink)
     : _priority_classes()
     , _group(std::move(group))
     , _fq(_group->_fg, make_fair_queue_config(_group->_config))
+    , _mixer(_group->_mixer)
     , _sink(sink)
 {
     seastar_logger.debug("Created io queue, multipliers {}:{}",
@@ -616,6 +624,7 @@ void io_queue::poll_io_queue() {
 }
 
 void io_queue::submit_request(io_desc_read_write* desc, internal::io_request req) noexcept {
+    _mixer.inc(desc->get_direction_and_length());
     _sink.submit(desc, std::move(req));
 }
 

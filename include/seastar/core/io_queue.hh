@@ -101,7 +101,7 @@ public:
     io_queue(io_group_ptr group, internal::io_sink& sink);
     ~io_queue();
 
-    fair_queue_ticket request_fq_ticket_for_queue(internal::io_request::direction dir, size_t len) const noexcept;
+    fair_queue_ticket request_fq_ticket_for_queue(internal::io_direction_and_length dnl) const noexcept;
 
     future<size_t>
     queue_request(const io_priority_class& pc, size_t len, internal::io_request req, io_intent* intent) noexcept;
@@ -161,7 +161,7 @@ class io_group {
 public:
     explicit io_group(io_queue::config io_cfg) noexcept;
 
-    fair_queue_ticket request_fq_ticket(internal::io_request::direction dir, size_t len) const noexcept;
+    fair_queue_ticket request_fq_ticket(internal::io_direction_and_length dnl) const noexcept;
 
 private:
     friend class io_queue;

@@ -31,7 +31,6 @@
 #include <seastar/core/internal/io_desc.hh>
 #include <seastar/core/internal/io_sink.hh>
 #include <seastar/core/io_priority_class.hh>
-#include <seastar/core/on_internal_error.hh>
 #include <seastar/util/log.hh>
 #include <chrono>
 #include <mutex>
@@ -170,12 +169,12 @@ class queued_io_request : private internal::io_request {
     bool is_cancelled() const noexcept { return !_desc; }
 
 public:
-    queued_io_request(internal::io_request req, io_queue& q, priority_class_data& pc, size_t l)
+    queued_io_request(internal::io_request req, io_queue& q, priority_class_data& pc, internal::io_direction_and_length dnl)
         : io_request(std::move(req))
         , _ioq(q)
-        , _len(l)
+        , _len(dnl.length())
         , _started(std::chrono::steady_clock::now())
-        , _ticket(_ioq.request_fq_ticket_for_queue(*this, _len))
+        , _ticket(_ioq.request_fq_ticket_for_queue(dnl))
         , _desc(std::make_unique<io_desc_read_write>(_ioq, pc))
     {
         io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), _len, _ticket);
@@ -538,25 +537,23 @@ priority_class_data& io_queue::find_or_create_class(const io_priority_class& pc)
     return *_priority_classes[id];
 }
 
-fair_queue_ticket io_queue::request_fq_ticket_for_queue(const internal::io_request& req, size_t len) const {
-    return _group->request_fq_ticket(req, len);
+fair_queue_ticket io_queue::request_fq_ticket_for_queue(internal::io_direction_and_length dnl) const noexcept {
+    return _group->request_fq_ticket(dnl);
 }
 
-fair_queue_ticket io_group::request_fq_ticket(const internal::io_request& req, size_t len) const {
+fair_queue_ticket io_group::request_fq_ticket(internal::io_direction_and_length dnl) const noexcept {
     unsigned weight;
     size_t size;
 
-    if (req.is_write()) {
+    if (dnl.is_write()) {
         weight = get_config().disk_req_write_multiplier;
-        size = get_config().disk_bytes_write_multiplier(len) * len;
-    } else if (req.is_read()) {
-        weight = io_queue::read_request_base_count;
-        size = _config.disk_bytes_read_multiplier(len) * len;
+        size = get_config().disk_bytes_write_multiplier(dnl.length()) * dnl.length();
     } else {
-        on_internal_error(io_log, fmt::format("Unrecognized request passing through I/O queue {}", req.opname()));
+        weight = io_queue::read_request_base_count;
+        size = get_config().disk_bytes_read_multiplier(dnl.length()) * dnl.length();
     }
 
-    return make_ticket(weight, size, len);
+    return make_ticket(weight, size, dnl.length());
 }
 
 fair_queue_ticket io_group::make_ticket(unsigned weight, size_t size, size_t len) const noexcept {
@@ -589,7 +586,8 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
         // First time will hit here, and then we create the class. It is important
         // that we create the shared pointer in the same shard it will be used at later.
         auto& pclass = find_or_create_class(pc);
-        auto queued_req = std::make_unique<queued_io_request>(std::move(req), *this, pclass, len);
+        internal::io_direction_and_length dnl(req, len);
+        auto queued_req = std::make_unique<queued_io_request>(std::move(req), *this, pclass, std::move(dnl));
         auto fut = queued_req->get_future();
         internal::cancellable_queue* cq = nullptr;
         if (intent != nullptr) {

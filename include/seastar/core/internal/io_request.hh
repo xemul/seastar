@@ -24,6 +24,7 @@
 #include <seastar/core/sstring.hh>
 #include <seastar/core/linux-aio.hh>
 #include <seastar/core/internal/io_desc.hh>
+#include <seastar/util/bool_class.hh>
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -31,8 +32,10 @@ namespace seastar {
 namespace internal {
 
 class io_request {
+    struct direction_tag{};
 public:
     enum class operation { read, readv, write, writev, fdatasync, recv, recvmsg, send, sendmsg, accept, connect, poll_add, poll_remove, cancel };
+    using direction = bool_class<direction_tag>;
 private:
     operation _op;
     int _fd;
@@ -132,7 +135,7 @@ private:
     {
         _ptr.addr = ptr;
     }
-public:
+
     bool is_read() const {
         switch (_op) {
         case operation::read:
@@ -155,6 +158,17 @@ public:
         default:
             return false;
         }
+    }
+
+public:
+    std::optional<direction> io_direction() const noexcept {
+        if (is_write()) {
+            return direction(true);
+        }
+        if (is_read()) {
+            return direction(false);
+        }
+        return {};
     }
 
     sstring opname() const;

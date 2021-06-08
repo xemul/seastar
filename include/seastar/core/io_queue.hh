@@ -91,7 +91,7 @@ public:
         unsigned capacity = std::numeric_limits<unsigned>::max();
         unsigned max_req_count = std::numeric_limits<int>::max();
         unsigned max_bytes_count = std::numeric_limits<int>::max();
-        unsigned disk_req_write_to_read_multiplier = read_request_base_count;
+        unsigned disk_req_write_multiplier = read_request_base_count;
         unsigned disk_bytes_write_multiplier = read_request_base_count;
         float disk_us_per_request = 0;
         float disk_us_per_byte = 0;

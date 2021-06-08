@@ -169,12 +169,12 @@ class queued_io_request : private internal::io_request {
     bool is_cancelled() const noexcept { return !_desc; }
 
 public:
-    queued_io_request(internal::io_request req, io_request::direction dir, io_queue& q, priority_class_data& pc, size_t l)
+    queued_io_request(internal::io_request req, io_queue& q, priority_class_data& pc, internal::io_direction_and_length dnl)
         : io_request(std::move(req))
         , _ioq(q)
-        , _len(l)
+        , _len(dnl.len)
         , _started(std::chrono::steady_clock::now())
-        , _ticket(_ioq.request_fq_ticket_for_queue(dir, _len))
+        , _ticket(_ioq.request_fq_ticket_for_queue(dnl))
         , _desc(std::make_unique<io_desc_read_write>(_ioq, pc))
     {
         io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), _len, _ticket);
@@ -528,23 +528,23 @@ priority_class_data& io_queue::find_or_create_class(const io_priority_class& pc)
     return *_priority_classes[id];
 }
 
-fair_queue_ticket io_queue::request_fq_ticket_for_queue(internal::io_request::direction dir, size_t len) const noexcept {
-    return _group->request_fq_ticket(dir, len);
+fair_queue_ticket io_queue::request_fq_ticket_for_queue(internal::io_direction_and_length dnl) const noexcept {
+    return _group->request_fq_ticket(dnl);
 }
 
-fair_queue_ticket io_group::request_fq_ticket(internal::io_request::direction direction, size_t len) const noexcept {
+fair_queue_ticket io_group::request_fq_ticket(internal::io_direction_and_length dnl) const noexcept {
     unsigned weight;
     size_t size;
 
-    if (direction) {
+    if (dnl.dir) {
         weight = _config.disk_req_write_multiplier;
-        size = _config.disk_bytes_write_multiplier(len) * len;
+        size = _config.disk_bytes_write_multiplier(dnl.len) * dnl.len;
     } else {
         weight = io_queue::read_request_base_count;
-        size = _config.disk_bytes_read_multiplier(len) * len;
+        size = _config.disk_bytes_read_multiplier(dnl.len) * dnl.len;
     }
 
-    return make_ticket(weight, size, len);
+    return make_ticket(weight, size, dnl.len);
 }
 
 fair_queue_ticket io_group::make_ticket(unsigned weight, size_t size, size_t len) const noexcept {
@@ -582,7 +582,8 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
             throw std::runtime_error(fmt::format("Unrecognized request passing through I/O queue {}", req.opname()));
         }
 
-        auto queued_req = std::make_unique<queued_io_request>(std::move(req), *direction, *this, pclass, len);
+        auto queued_req = std::make_unique<queued_io_request>(std::move(req), *this, pclass,
+                internal::io_direction_and_length{ *direction, len });
         auto fut = queued_req->get_future();
         internal::cancellable_queue* cq = nullptr;
         if (intent != nullptr) {

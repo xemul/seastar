@@ -270,5 +270,26 @@ public:
         return io_request(operation::cancel, fd, reinterpret_cast<char*>(addr));
     }
 };
+
+// Helper pair of IO direction and length
+struct io_direction_and_length {
+    ssize_t _directed_length;
+
+public:
+    io_direction_and_length(const io_request& rq, size_t val) {
+        if (rq.is_read()) {
+            _directed_length = val;
+        } else if (rq.is_write()) {
+            _directed_length = -val;
+        } else {
+            throw std::runtime_error(fmt::format("Unrecognized request passing through I/O queue {}", rq.opname()));
+        }
+    }
+
+    bool is_read() const noexcept { return _directed_length >= 0; }
+    bool is_write() const noexcept { return _directed_length < 0; }
+    size_t length() const noexcept { return std::abs(_directed_length); }
+};
+
 }
 }

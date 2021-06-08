@@ -112,14 +112,16 @@ public:
 class io_desc_read_write final : public io_completion {
     io_queue& _ioq;
     priority_class_data& _pclass;
+    internal::io_direction_and_length _dnl;
     std::chrono::steady_clock::time_point _dispatched;
     fair_queue_ticket _fq_ticket;
     promise<size_t> _pr;
 
 public:
-    io_desc_read_write(io_queue& ioq, priority_class_data& pc)
+    io_desc_read_write(io_queue& ioq, priority_class_data& pc, internal::io_direction_and_length dnl)
         : _ioq(ioq)
         , _pclass(pc)
+        , _dnl(dnl)
     {}
 
     virtual void set_exception(std::exception_ptr eptr) noexcept override {
@@ -145,9 +147,9 @@ public:
         delete this;
     }
 
-    void dispatch(size_t len, std::chrono::steady_clock::time_point queued, fair_queue_ticket x_ticket) noexcept {
+    void dispatch(std::chrono::steady_clock::time_point queued, fair_queue_ticket x_ticket) noexcept {
         auto now = std::chrono::steady_clock::now();
-        _pclass.on_dispatch(len, std::chrono::duration_cast<std::chrono::duration<double>>(now - queued));
+        _pclass.on_dispatch(_dnl.len, std::chrono::duration_cast<std::chrono::duration<double>>(now - queued));
         _dispatched = now;
         _fq_ticket = x_ticket;
     }
@@ -159,7 +161,6 @@ public:
 
 class queued_io_request : private internal::io_request {
     io_queue& _ioq;
-    size_t _len;
     std::chrono::steady_clock::time_point _started;
     fair_queue_ticket _ticket;
     fair_queue_entry _fq_entry;
@@ -172,12 +173,11 @@ public:
     queued_io_request(internal::io_request req, io_queue& q, priority_class_data& pc, internal::io_direction_and_length dnl)
         : io_request(std::move(req))
         , _ioq(q)
-        , _len(dnl.len)
         , _started(std::chrono::steady_clock::now())
         , _ticket(_ioq.request_fq_ticket_for_queue(dnl))
-        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc))
+        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, dnl))
     {
-        io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), _len, _ticket);
+        io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), dnl.len, _ticket);
     }
 
     queued_io_request(queued_io_request&&) = delete;
@@ -191,7 +191,7 @@ public:
 
         io_log.trace("dev {} : req {} submit", _ioq.dev_id(), fmt::ptr(&*_desc));
         _intent.maybe_dequeue();
-        _desc->dispatch(_len, _started, x_ticket);
+        _desc->dispatch(_started, x_ticket);
         _ioq.submit_request(_desc.release(), std::move(*this));
         delete this;
     }

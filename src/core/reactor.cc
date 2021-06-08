@@ -3666,7 +3666,7 @@ public:
             }
             if (p.read_req_rate != std::numeric_limits<uint64_t>::max()) {
                 cfg.max_req_count = io_queue::read_request_base_count * per_io_group(p.read_req_rate * latency_goal().count(), nr_groups);
-                cfg.disk_req_write_to_read_multiplier = (io_queue::read_request_base_count * p.read_req_rate) / p.write_req_rate;
+                cfg.disk_req_write_multiplier = (io_queue::read_request_base_count * p.read_req_rate) / p.write_req_rate;
                 cfg.disk_us_per_request = 1000000. / p.read_req_rate;
             }
             if (p.read_saturation_length != std::numeric_limits<uint64_t>::max()) {

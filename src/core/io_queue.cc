@@ -157,6 +157,8 @@ public:
     future<size_t> get_future() {
         return _pr.get_future();
     }
+
+    internal::io_direction_and_length get_direction_and_length() const noexcept { return _dnl; }
 };
 
 class queued_io_request : private internal::io_request {
@@ -211,7 +213,7 @@ public:
     fair_queue_ticket ticket_for_queue() const noexcept { return _ticket; }
 
     fair_queue_ticket ticket_for_dispatch() const noexcept {
-        return _ticket;
+        return _ioq.request_fq_ticket_for_dispatch(_desc->get_direction_and_length(), _ticket);
     }
 
     static queued_io_request& from_fq_entry(fair_queue_entry& ent) noexcept {
@@ -532,6 +534,10 @@ fair_queue_ticket io_queue::request_fq_ticket_for_queue(internal::io_direction_a
     return _group->request_fq_ticket(dnl);
 }
 
+fair_queue_ticket io_queue::request_fq_ticket_for_dispatch(internal::io_direction_and_length dnl, fair_queue_ticket q_ticket) const noexcept {
+    return _group->request_fq_mixed_ticket(dnl, q_ticket);
+}
+
 fair_queue_ticket io_group::request_fq_ticket(internal::io_direction_and_length dnl) const noexcept {
     unsigned weight;
     size_t size;
@@ -545,6 +551,10 @@ fair_queue_ticket io_group::request_fq_ticket(internal::io_direction_and_length 
     }
 
     return make_ticket(weight, size, dnl.len);
+}
+
+fair_queue_ticket io_group::request_fq_mixed_ticket(internal::io_direction_and_length dnl, fair_queue_ticket q_ticket) const noexcept {
+    return q_ticket;
 }
 
 fair_queue_ticket io_group::make_ticket(unsigned weight, size_t size, size_t len) const noexcept {

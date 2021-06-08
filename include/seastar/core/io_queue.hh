@@ -42,12 +42,34 @@ class io_intent;
 
 namespace internal {
 class io_sink;
+class io_mixer;
+
 namespace linux_abi {
 
 struct io_event;
 struct iocb;
 
 }
+
+class io_group_mixer {
+    friend class io_mixer;
+public:
+    io_group_mixer() noexcept {}
+    ~io_group_mixer() {
+    }
+};
+
+class io_mixer {
+    io_group_mixer& _group;
+public:
+    io_mixer(io_group_mixer& gm) noexcept : _group(gm) {}
+    ~io_mixer() {
+    }
+
+    void inc(io_direction_and_length dnl) noexcept;
+    void dec(io_direction_and_length dnl) noexcept;
+};
+
 }
 
 using shard_id = unsigned;
@@ -65,6 +87,7 @@ private:
     std::vector<std::unique_ptr<priority_class_data>> _priority_classes;
     io_group_ptr _group;
     fair_queue _fq;
+    internal::io_mixer _mixer;
     internal::io_sink& _sink;
 
     priority_class_data& find_or_create_class(const io_priority_class& pc);
@@ -129,7 +152,7 @@ public:
 #pragma GCC diagnostic pop
     }
 
-    void notify_request_finished(fair_queue_ticket x_ticket) noexcept;
+    void notify_request_finished(fair_queue_ticket x_ticket, internal::io_direction_and_length dnl) noexcept;
 
     // Dispatch requests that are pending in the I/O queue
     void poll_io_queue();
@@ -168,6 +191,7 @@ public:
 private:
     friend class io_queue;
     fair_group _fg;
+    internal::io_group_mixer _mixer;
     const io_queue::config _config;
 
     static fair_group::config make_fair_group_config(io_queue::config qcfg) noexcept;

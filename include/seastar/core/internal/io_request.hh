@@ -284,5 +284,12 @@ public:
         return io_request(operation::cancel, fd, reinterpret_cast<char*>(addr));
     }
 };
+
+// Helper pair of IO direction and length
+struct io_direction_and_length {
+    io_request::direction dir;
+    size_t len;
+};
+
 }
 }

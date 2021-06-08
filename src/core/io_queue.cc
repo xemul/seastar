@@ -309,7 +309,7 @@ io_queue::io_queue(io_group_ptr group, internal::io_sink& sink)
     , _sink(sink)
 {
     seastar_logger.debug("Created io queue, multipliers {}:{}",
-            get_config().disk_req_write_to_read_multiplier,
+            get_config().disk_req_write_multiplier,
             get_config().disk_bytes_write_multiplier);
 }
 
@@ -326,10 +326,10 @@ fair_group::config io_group::make_fair_group_config(io_queue::config qcfg) noexc
      */
     auto max_req_count = std::min(qcfg.max_req_count,
         qcfg.max_bytes_count / io_queue::minimal_request_size);
-    auto max_req_count_min = std::max(io_queue::read_request_base_count, qcfg.disk_req_write_to_read_multiplier);
+    auto max_req_count_min = std::max(io_queue::read_request_base_count, qcfg.disk_req_write_multiplier);
     /*
      * Read requests weight read_request_base_count, writes weight
-     * disk_req_write_to_read_multiplier. The fair queue limit must
+     * disk_req_write_multiplier. The fair queue limit must
      * be enough to pass the largest one through. The same is true
      * for request sizes, but that check is done run-time, see the
      * request_fq_ticket() method.
@@ -538,7 +538,7 @@ fair_queue_ticket io_group::request_fq_ticket(const internal::io_request& req, s
     size_t size;
 
     if (req.is_write()) {
-        weight = _config.disk_req_write_to_read_multiplier;
+        weight = _config.disk_req_write_multiplier;
         size = _config.disk_bytes_write_multiplier * len;
     } else if (req.is_read()) {
         weight = io_queue::read_request_base_count;

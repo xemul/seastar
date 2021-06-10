@@ -154,6 +154,12 @@ struct mountpoint_params {
     };
     std::vector<size_bandwidth> read_bytes_steps;
     std::vector<size_bandwidth> write_bytes_steps;
+
+    struct mixed_bandwidth {
+        size_t write_max_length;
+        std::vector<size_bandwidth> read_bytes_steps;
+    };
+    std::vector<mixed_bandwidth> mixed_bytes;
 };
 
 }
@@ -180,6 +186,9 @@ struct convert<seastar::mountpoint_params> {
         if (node["write_bandwidth_steps"]) {
             mp.write_bytes_steps = node["write_bandwidth_steps"].as<std::vector<mountpoint_params::size_bandwidth>>();
         }
+        if (node["mixed_bandwidth"]) {
+            mp.mixed_bytes = node["mixed_bandwidth"].as<std::vector<mountpoint_params::mixed_bandwidth>>();
+        }
         return true;
     }
 };
@@ -193,6 +202,17 @@ struct convert<seastar::mountpoint_params::size_bandwidth> {
         return true;
     }
 };
+
+template <>
+struct convert<seastar::mountpoint_params::mixed_bandwidth> {
+    static bool decode(const Node& node, seastar::mountpoint_params::mixed_bandwidth& mb) {
+        using namespace seastar;
+        mb.write_max_length = parse_memory_size(node["write_max_length"].as<std::string>());
+        mb.read_bytes_steps = node["read_bandwidth_steps"].as<std::vector<mountpoint_params::size_bandwidth>>();
+        return true;
+    }
+};
+
 }
 
 namespace seastar {
@@ -3700,6 +3720,7 @@ public:
                 cfg.max_bytes_count = io_queue::read_request_base_count * per_io_group(p.read_bytes_rate * latency_goal().count(), nr_groups);
                 cfg.disk_bytes_write_multiplier.set_default((io_queue::read_request_base_count * p.read_bytes_rate) / p.write_bytes_rate);
                 cfg.disk_bytes_read_multiplier.set_default(io_queue::read_request_base_count);
+                cfg.disk_bytes_mixed_read_multiplier.set_default(io_queue::read_request_base_count);
                 cfg.disk_us_per_byte = 1000000. / p.read_bytes_rate;
             }
             if (p.read_req_rate != std::numeric_limits<uint64_t>::max()) {
@@ -3725,6 +3746,30 @@ public:
                 }
                 cfg.disk_bytes_write_multiplier.add_step(st.size, (io_queue::read_request_base_count * p.read_bytes_rate) / st.bandwidth);
             }
+
+            if (p.mixed_bytes.size() != 0) {
+                const mountpoint_params::mixed_bandwidth* best = nullptr;
+                float best_score = -1.0;
+                for (auto& mb : p.mixed_bytes) {
+                    unsigned read_max_bytes = per_io_group(mb.read_bytes_steps[0].bandwidth * latency_goal().count(), nr_groups);
+                    float score = float(read_max_bytes) / float(p.read_saturation_length) +
+                                float(mb.write_max_length) / float(p.write_saturation_length);
+                    if (score > best_score) {
+                        best_score = score;
+                        best = &mb;
+                    }
+                }
+
+                cfg.disk_mixed_read_max_length = per_io_group(best->read_bytes_steps[0].bandwidth * latency_goal().count(), nr_groups);
+                cfg.disk_mixed_write_max_length = best->write_max_length;
+                for (auto&& st : best->read_bytes_steps) {
+                    if (st.bandwidth > p.read_bytes_rate) {
+                        throw std::invalid_argument(format("mixed read bandwidth for {} should be smaller than {}", st.size, p.read_bytes_rate));
+                    }
+                    cfg.disk_bytes_mixed_read_multiplier.add_step(st.size, (io_queue::read_request_base_count * p.read_bytes_rate) / st.bandwidth);
+                }
+            }
+
             cfg.mountpoint = p.mountpoint;
         } else {
             // For backwards compatibility

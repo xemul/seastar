@@ -300,9 +300,19 @@ void io_sink::submit(io_completion* desc, io_request req) noexcept {
 }
 
 void io_mixer::inc(io_direction_and_length dnl) noexcept {
+    if (dnl.is_read()) {
+        _group._beancounter.fetch_add(dnl.length());
+    } else if (_writes++ == 0) {
+        _group._beancounter.fetch_add(io_group_mixer::write_bias);
+    }
 }
 
 void io_mixer::dec(io_direction_and_length dnl) noexcept {
+    if (dnl.is_read()) {
+        _group._beancounter.fetch_sub(dnl.length());
+    } else if (--_writes == 0) {
+        _group._beancounter.fetch_sub(io_group_mixer::write_bias);
+    }
 }
 
 } // internal namespace
@@ -572,7 +582,14 @@ fair_queue_ticket io_group::request_fq_ticket(internal::io_direction_and_length 
 }
 
 fair_queue_ticket io_group::request_fq_mixed_ticket(internal::io_direction_and_length dnl, fair_queue_ticket q_ticket) const noexcept {
-    return q_ticket;
+    if (dnl.is_write() || !_mixer.has_writes()) {
+        return q_ticket;
+    }
+
+    unsigned weight = io_queue::read_request_base_count;
+    size_t size = get_config().disk_bytes_mixed_read_multiplier(_mixer.get_reads()) * dnl.length();
+
+    return make_ticket(weight, size, dnl.length());
 }
 
 fair_queue_ticket io_group::make_ticket(unsigned weight, size_t size, size_t len) const noexcept {

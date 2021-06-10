@@ -141,6 +141,8 @@ public:
         float disk_us_per_byte = 0;
         size_t disk_read_saturation_length = std::numeric_limits<size_t>::max();
         size_t disk_write_saturation_length = std::numeric_limits<size_t>::max();
+        size_t disk_mixed_read_max_length = std::numeric_limits<size_t>::max();
+        size_t disk_mixed_write_max_length = std::numeric_limits<size_t>::max();
         internal::step_function<unsigned, 2> disk_bytes_mixed_read_multiplier = internal::step_function<unsigned, 2>(read_request_base_count);
         sstring mountpoint = "undefined";
     };

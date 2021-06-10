@@ -590,10 +590,12 @@ io_queue::request_limits io_queue::get_request_limits() const noexcept {
     request_limits l;
     l.max_read = align_down<size_t>(std::min<size_t>({
             get_config().disk_read_saturation_length,
+            get_config().disk_mixed_read_max_length,
             get_config().max_bytes_count / get_config().disk_bytes_read_multiplier.get_default()
         }), minimal_request_size);
     l.max_write = align_down<size_t>(std::min<size_t>({
             get_config().disk_write_saturation_length,
+            get_config().disk_mixed_write_max_length,
             get_config().max_bytes_count / get_config().disk_bytes_write_multiplier.get_default()
         }), minimal_request_size);
     return l;

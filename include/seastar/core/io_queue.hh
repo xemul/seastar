@@ -152,6 +152,7 @@ public:
 private:
     static fair_queue::config make_fair_queue_config(config cfg);
 
+public:
     const config& get_config() const noexcept;
 };
 

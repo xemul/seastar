@@ -21,6 +21,7 @@
 #include <seastar/core/app-template.hh>
 #include <seastar/core/thread.hh>
 #include <seastar/core/reactor.hh>
+#include <seastar/core/io_queue.hh>
 #include <seastar/util/closeable.hh>
 #include <yaml-cpp/yaml.h>
 
@@ -49,6 +50,20 @@ int main(int ac, char** av) {
                     return remove_file(storage + "/tempfile").then([&out, &f] {
                         out << YAML::Key << "disk_read_max_length" << YAML::Value << f.disk_read_max_length();
                         out << YAML::Key << "disk_write_max_length" << YAML::Value << f.disk_write_max_length();
+                    }).then([&out, &f] {
+                        return f.stat().then([&out] (auto stat) {
+                            auto cfg = engine().get_io_queue(stat.st_dev).get_config();
+                            out << YAML::Key << "io_queue_config" << YAML::BeginMap;
+                            out << YAML::Key << "max_req_count" << YAML::Value << cfg.max_req_count;
+                            out << YAML::Key << "max_bytes_count" << YAML::Value << cfg.max_bytes_count;
+                            out << YAML::Key << "mixed_read_max_length" << YAML::Value << cfg.disk_mixed_read_max_length;
+                            out << YAML::Key << "mixed_write_max_length" << YAML::Value << cfg.disk_mixed_write_max_length;
+                            out << YAML::Key << "disk_req_write_multiplier" << YAML::Value << cfg.disk_req_write_multiplier;
+                            out << YAML::Key << "disk_bytes_read_multiplier" << YAML::Value << format("{}", cfg.disk_bytes_read_multiplier);
+                            out << YAML::Key << "disk_bytes_write_multiplier" << YAML::Value << format("{}", cfg.disk_bytes_write_multiplier);
+                            out << YAML::Key << "disk_bytes_mixed_read_multiplier" << YAML::Value << format("{}", cfg.disk_bytes_mixed_read_multiplier);
+                            out << YAML::EndMap;
+                        });
                     });
                 });
             }).get();

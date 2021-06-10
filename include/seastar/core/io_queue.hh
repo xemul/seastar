@@ -53,17 +53,36 @@ struct iocb;
 
 class io_group_mixer {
     friend class io_mixer;
+    std::atomic<size_t> _beancounter;
+
+    static constexpr unsigned write_shift = 52; // 6.5 bytes
+    static constexpr size_t write_bias = 1ull << write_shift;
+    static constexpr size_t write_mask = ~(write_bias - 1);
+
+
 public:
-    io_group_mixer() noexcept {}
+    io_group_mixer() noexcept : _beancounter(0) {}
     ~io_group_mixer() {
+        assert(_beancounter.load(std::memory_order_relaxed) == 0);
+    }
+
+    bool has_writes() const noexcept {
+        return _beancounter.load(std::memory_order_relaxed) >> write_shift != 0;
+    }
+
+    size_t get_reads() const noexcept {
+        return _beancounter.load(std::memory_order_relaxed) & ~write_mask;
     }
 };
 
 class io_mixer {
     io_group_mixer& _group;
+    unsigned _writes = 0;
+
 public:
     io_mixer(io_group_mixer& gm) noexcept : _group(gm) {}
     ~io_mixer() {
+        assert(_writes == 0);
     }
 
     void inc(io_direction_and_length dnl) noexcept;

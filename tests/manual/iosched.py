@@ -45,7 +45,7 @@ class ioinfo:
         return 4
 
     def max_write_length(self):
-        return min(self._info['disk_write_max_length'] / 1024, 64)
+        return min(int(self._info['disk_write_max_length'] / 1024), 64)
 
 
 class job:

@@ -3570,6 +3570,7 @@ smp::get_options_description()
 #endif
         ("io-properties-file", bpo::value<std::string>(), "path to a YAML file describing the characteristics of the I/O Subsystem")
         ("io-properties", bpo::value<std::string>(), "a YAML string describing the characteristics of the I/O Subsystem")
+        ("io-watchdog-period-sec", bpo::value<unsigned>()->default_value(0), "io watchdog")
         ("mbind", bpo::value<bool>()->default_value(true), "enable mbind")
 #ifndef SEASTAR_NO_EXCEPTION_HACK
         ("enable-glibc-exception-scaling-workaround", bpo::value<bool>()->default_value(true), "enable workaround for glibc/gcc c++ exception scalablity problem")
@@ -4120,10 +4121,13 @@ void smp::configure(boost::program_options::variables_map configuration, reactor
         }
     };
 
-    auto assign_io_queues = [&ioq_topology] (shard_id shard) {
+    auto assign_io_queues = [&ioq_topology, wdog_period = configuration["io-watchdog-period-sec"].as<unsigned>()] (shard_id shard) {
         for (auto& topo : ioq_topology) {
             auto queue = std::move(topo.second.queues[shard]);
             assert(queue);
+            if (wdog_period != 0) {
+                queue->start_watchdog(std::chrono::seconds(wdog_period));
+            }
             engine()._io_queues.emplace(topo.first, std::move(queue));
         }
     };

@@ -329,6 +329,7 @@ struct smp_options : public program_options::option_group {
     program_options::value<std::string> io_properties_file;
     /// A YAML string describing the characteristics of the I/O Subsystem.
     program_options::value<std::string> io_properties;
+    program_options::value<unsigned> io_wdog_period_sec;
     /// Enable mbind.
     ///
     /// Default: \p true.

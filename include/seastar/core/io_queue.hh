@@ -48,6 +48,8 @@ struct io_event;
 struct iocb;
 
 }
+
+class io_watchdog;
 }
 
 using shard_id = unsigned;
@@ -63,12 +65,13 @@ using io_group_ptr = std::shared_ptr<io_group>;
 class io_queue {
 public:
     class priority_class_data;
-
+    friend class internal::io_watchdog;
 private:
     std::vector<std::unique_ptr<priority_class_data>> _priority_classes;
     io_group_ptr _group;
     boost::container::small_vector<fair_queue, 2> _streams;
     internal::io_sink& _sink;
+    std::unique_ptr<internal::io_watchdog> _wdog;
 
     priority_class_data& find_or_create_class(const io_priority_class& pc);
 
@@ -154,6 +157,8 @@ public:
     };
 
     request_limits get_request_limits() const noexcept;
+
+    void start_watchdog(std::chrono::seconds period);
 
 private:
     static fair_queue::config make_fair_queue_config(const config& cfg);

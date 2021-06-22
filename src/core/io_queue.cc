@@ -52,6 +52,7 @@ struct default_io_exception_factory {
 };
 
 class io_queue::priority_class_data {
+    friend internal::io_watchdog;
     const io_priority_class _pc;
     uint32_t _shares;
     struct {
@@ -714,5 +715,52 @@ void internal::io_sink::submit(io_completion* desc, internal::io_request req) no
         desc->set_exception(std::current_exception());
     }
 }
+
+void io_queue::start_watchdog(std::chrono::seconds period) {
+    _wdog = std::make_unique<internal::io_watchdog>(*this, period);
+}
+
+namespace internal {
+
+class io_watchdog {
+    timer<> _next;
+    const io_queue& _queue;
+    struct pc_stat {
+        uint32_t ops[2] = {};
+    };
+    std::vector<pc_stat> _prev_stats;
+
+public:
+    io_watchdog(const io_queue& q, std::chrono::seconds period) noexcept
+        : _next([this] { tick(); })
+        , _queue(q)
+    {
+        if (!io_log.is_enabled(log_level::debug)) {
+            io_log.warn("io logger log level should be at least 'debug' to work");
+        } else {
+            _next.arm_periodic(period);
+        }
+    }
+
+    void tick() {
+        if (_queue._queued_requests != 0 || _queue._requests_executing != 0) {
+            std::string message = fmt::format("iowdog.{} q:{} x:{}", _queue.dev_id(), _queue._queued_requests, _queue._requests_executing);
+            _prev_stats.resize(_queue._priority_classes.size());
+            for (unsigned pc_i = 0; pc_i < _queue._priority_classes.size(); pc_i++) {
+                const auto& pc = _queue._priority_classes[pc_i];
+                auto& prev_pc = _prev_stats[pc_i];
+                if (pc) {
+                    message += fmt::format(" [ PC.{} q:{} x:{} t:{}+{} ]", pc_i, pc->_nr_queued, pc->_nr_executing,
+                        pc->_rwstat[0].ops - prev_pc.ops[0], pc->_rwstat[1].ops - prev_pc.ops[1]);
+                    prev_pc.ops[0] = pc->_rwstat[0].ops;
+                    prev_pc.ops[1] = pc->_rwstat[1].ops;
+                }
+            }
+            io_log.debug("{}", message);
+        }
+    }
+};
+
+} // namespace internal
 
 }

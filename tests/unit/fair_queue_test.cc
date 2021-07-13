@@ -56,6 +56,7 @@ struct request {
     }
 
     fair_queue_ticket ticket_for_dispatch() const noexcept { return ticket; }
+    fair_queue_ticket ticket_for_queue() const noexcept { return ticket; }
 
     static request& from_fq_entry(fair_queue_entry& ent) noexcept {
         return *boost::intrusive::get_parent_from_member(&ent, &request::fqent);

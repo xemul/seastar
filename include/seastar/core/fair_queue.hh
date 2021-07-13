@@ -123,6 +123,7 @@ SEASTAR_CONCEPT(
 template <typename Req>
 concept Dispatcheable = requires (Req rq) {
     { rq.dispatch() } noexcept -> std::same_as<void>;
+    { rq.ticket_for_queue() } noexcept -> std::same_as<fair_queue_ticket>;
     { rq.ticket_for_dispatch() } noexcept -> std::same_as<fair_queue_ticket>;
 };
 )
@@ -292,7 +293,7 @@ private:
 
     float normalize_factor() const;
     void normalize_stats();
-    void account_dispatched(fair_queue_ticket ticket, priority_class& pclass);
+    void account_dispatched(fair_queue_ticket q_ticket, fair_queue_ticket d_ticket, priority_class& pclass);
 
     // Estimated time to process the given ticket
     std::chrono::microseconds duration(fair_queue_ticket desc) const noexcept {
@@ -364,7 +365,7 @@ public:
             pop_priority_class(h);
             h->_queue.pop_front();
 
-            account_dispatched(ticket, *h);
+            account_dispatched(req.ticket_for_queue(), ticket, *h);
 
             if (!h->_queue.empty()) {
                 push_priority_class(h);

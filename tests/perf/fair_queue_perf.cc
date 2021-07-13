@@ -64,6 +64,7 @@ struct local_fq_entry {
         delete this;
     }
 
+    fair_queue_ticket ticket_for_queue() const noexcept { return fair_queue_ticket{1, 1}; }
     fair_queue_ticket ticket_for_dispatch() const noexcept { return fair_queue_ticket{1, 1}; }
 
     static local_fq_entry& from_fq_entry(fair_queue_entry& ent) noexcept {

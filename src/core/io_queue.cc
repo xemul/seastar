@@ -209,6 +209,10 @@ public:
 
     future<size_t> get_future() noexcept { return _desc->get_future(); }
     fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
+
+    fair_queue_ticket ticket_for_queue() const noexcept {
+        return _ticket;
+    }
     fair_queue_ticket ticket_for_dispatch() const noexcept {
         return _ticket;
     }

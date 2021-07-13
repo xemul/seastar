@@ -257,14 +257,14 @@ void fair_queue::notify_request_cancelled(fair_queue_entry& ent) noexcept {
     ent._ticket = fair_queue_ticket();
 }
 
-void fair_queue::account_dispatched(fair_queue_ticket ticket, priority_class& pclass) {
-    _resources_executing += ticket;
-    _resources_queued -= ticket;
+void fair_queue::account_dispatched(fair_queue_ticket q_ticket, fair_queue_ticket d_ticket, priority_class& pclass) {
+    _resources_executing += d_ticket;
+    _resources_queued -= q_ticket;
     _requests_executing++;
     _requests_queued--;
 
     auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
-    auto req_cost  = ticket.normalize(_group.maximum_capacity()) / pclass._shares;
+    auto req_cost  = q_ticket.normalize(_group.maximum_capacity()) / pclass._shares;
     auto cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
     float next_accumulated = pclass._accumulated + cost;
     while (std::isinf(next_accumulated)) {

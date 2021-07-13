@@ -248,7 +248,7 @@ void fair_queue::notify_request_cancelled(fair_queue_ticket q_ticket) noexcept {
     _resources_queued -= q_ticket;
 }
 
-void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&, fair_queue_ticket)> cb, std::function<fair_queue_ticket(const fair_queue_entry&)> get_ticket) {
+void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&, fair_queue_ticket)> cb, std::function<std::pair<fair_queue_ticket, fair_queue_ticket>(const fair_queue_entry&)> get_ticket) {
     while (!_handles.empty()) {
         priority_class_ptr h = _handles.top();
         if (h->_queue.empty()) {
@@ -257,21 +257,21 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&, fair_qu
         }
 
         auto& req = h->_queue.front();
-        fair_queue_ticket ticket = get_ticket(req);
-        if (!grab_capacity(ticket)) {
+        auto [ q_ticket, d_ticket ] = get_ticket(req);
+        if (!grab_capacity(d_ticket)) {
             break;
         }
 
         pop_priority_class(h);
         h->_queue.pop_front();
 
-        _resources_executing += ticket;
-        _resources_queued -= ticket;
+        _resources_executing += d_ticket;
+        _resources_queued -= q_ticket;
         _requests_executing++;
         _requests_queued--;
 
         auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
-        auto req_cost  = ticket.normalize(_group.maximum_capacity()) / h->_shares;
+        auto req_cost  = q_ticket.normalize(_group.maximum_capacity()) / h->_shares;
         auto cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
         float next_accumulated = h->_accumulated + cost;
         while (std::isinf(next_accumulated)) {
@@ -287,7 +287,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&, fair_qu
             push_priority_class(h);
         }
 
-        cb(req, ticket);
+        cb(req, d_ticket);
     }
 }
 

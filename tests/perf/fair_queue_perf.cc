@@ -110,7 +110,8 @@ future<> perf_fair_queue::test(bool loc) {
                 le->submit();
                 delete le;
             }, [] (const fair_queue_entry& ent) {
-                return fair_queue_ticket{1, 1};
+                auto t = fair_queue_ticket{1, 1};
+                return std::make_pair(t, t);
             });
             return make_ready_future<>();
         });

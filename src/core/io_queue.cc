@@ -655,8 +655,9 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
 void io_queue::poll_io_queue() {
     _fq.dispatch_requests([] (fair_queue_entry& fqe, fair_queue_ticket x_ticket) {
         queued_io_request::from_fq_entry(fqe).dispatch(x_ticket);
-    }, [] (const fair_queue_entry& fqe) -> fair_queue_ticket {
-        return queued_io_request::from_fq_entry(fqe).ticket_for_dispatch();
+    }, [] (const fair_queue_entry& fqe) -> std::pair<fair_queue_ticket, fair_queue_ticket> {
+        auto& rq = queued_io_request::from_fq_entry(fqe);
+        return std::make_pair(rq.ticket_for_queue(), rq.ticket_for_dispatch());
     });
 }
 

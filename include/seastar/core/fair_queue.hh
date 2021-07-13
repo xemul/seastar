@@ -327,7 +327,7 @@ public:
 
     /// Try to execute new requests if there is capacity left in the queue.
     void dispatch_requests(std::function<void(fair_queue_entry&, fair_queue_ticket)> cb,
-                            std::function<fair_queue_ticket(const fair_queue_entry&)> ticket);
+                            std::function<std::pair<fair_queue_ticket, fair_queue_ticket>(const fair_queue_entry&)> ticket);
 
     clock_type next_pending_aio() const noexcept {
         if (_pending) {

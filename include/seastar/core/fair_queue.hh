@@ -275,10 +275,11 @@ private:
      * in the middle of the waiting
      */
     struct pending {
+        fair_queue_entry* ent;
         fair_group_rover orig_tail;
         fair_queue_ticket cap;
 
-        pending(fair_group_rover t, fair_queue_ticket c) noexcept : orig_tail(t), cap(c) {}
+        pending(fair_queue_entry* e, fair_group_rover t, fair_queue_ticket c) noexcept : ent(e), orig_tail(t), cap(c) {}
     };
 
     std::optional<pending> _pending;

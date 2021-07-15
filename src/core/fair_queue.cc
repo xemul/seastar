@@ -180,6 +180,31 @@ bool fair_queue::grab_pending_capacity(fair_queue_entry& ent, fair_queue_ticket 
     }
 
     if (cap == _pending->cap) {
+        /*
+         * The current request will use the capacity grabbed
+         * previously and will release it upon completion. It
+         * doesn't matter whether it's the same request that
+         * the _pending->ent points to or not.
+         */
+        _pending.reset();
+    } else if (_pending->ent == &ent) {
+        /*
+         * Time to dispatch the entry, that had put the queue
+         * into pending state, but now it goes into disk with
+         * the ticket value that differs from what was charged
+         * into the group. Hence we need to update the group,
+         * release the part that's no longer needed and grab
+         * the part that's required on top. The requirement on
+         * tail rover above is checked with the actual ticket,
+         * so we're not overwhelming the disk with this extra.
+         */
+        auto sup = fair_queue_ticket::maximize(cap, _pending->cap);
+        if (auto to_release = sup - cap) {
+            _group.release_capacity(to_release);
+        }
+        if (auto to_grab = sup - _pending->cap) {
+            _group.grab_capacity(to_grab);
+        }
         _pending.reset();
     } else {
         /*
@@ -202,7 +227,7 @@ bool fair_queue::grab_capacity(fair_queue_entry& req, fair_queue_ticket cap) noe
 
     fair_group_rover orig_tail = _group.grab_capacity(cap);
     if ((orig_tail + cap).maybe_ahead_of(_group.head())) {
-        _pending.emplace(orig_tail, cap);
+        _pending.emplace(&req, orig_tail, cap);
         return false;
     }
 

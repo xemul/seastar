@@ -65,6 +65,7 @@ public:
     /// Checks if the tickets fully equals to another one
     /// \param desc another \ref fair_queue_ticket to compare with
     bool operator==(const fair_queue_ticket& desc) const noexcept;
+    bool operator!=(const fair_queue_ticket& desc) const noexcept;
 
     std::chrono::microseconds duration_at_pace(float weight_pace, float size_pace) const noexcept;
 
@@ -75,6 +76,8 @@ public:
     explicit operator bool() const noexcept;
 
     friend std::ostream& operator<<(std::ostream& os, fair_queue_ticket t);
+
+    static fair_queue_ticket supremum(fair_queue_ticket a, fair_queue_ticket b) noexcept;
 
     /// \returns the normalized value of this \ref fair_queue_ticket along a base axis
     ///
@@ -262,10 +265,11 @@ private:
      * in the middle of the waiting
      */
     struct pending {
+        fair_queue_entry* ent;
         fair_group_rover orig_tail;
         fair_queue_ticket cap;
 
-        pending(fair_group_rover t, fair_queue_ticket c) noexcept : orig_tail(t), cap(c) {}
+        pending(fair_queue_entry* e, fair_group_rover t, fair_queue_ticket c) noexcept : ent(e), orig_tail(t), cap(c) {}
     };
 
     std::optional<pending> _pending;
@@ -282,8 +286,8 @@ private:
         return desc.duration_at_pace(_config.ticket_weight_pace, _config.ticket_size_pace);
     }
 
-    bool grab_capacity(fair_queue_ticket cap) noexcept;
-    bool grab_pending_capacity(fair_queue_ticket cap) noexcept;
+    bool grab_capacity(fair_queue_entry& ent, fair_queue_ticket cap) noexcept;
+    bool grab_pending_capacity(fair_queue_entry& ent, fair_queue_ticket cap) noexcept;
 public:
     /// Constructs a fair queue with configuration parameters \c cfg.
     ///

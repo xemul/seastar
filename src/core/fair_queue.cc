@@ -77,6 +77,10 @@ bool fair_queue_ticket::operator==(const fair_queue_ticket& o) const noexcept {
     return _weight == o._weight && _size == o._size;
 }
 
+bool fair_queue_ticket::operator!=(const fair_queue_ticket& o) const noexcept {
+    return _weight != o._weight || _size != o._size;
+}
+
 std::ostream& operator<<(std::ostream& os, fair_queue_ticket t) {
     return os << t._weight << ":" << t._size;
 }
@@ -85,6 +89,10 @@ fair_group_rover::fair_group_rover(uint32_t weight, uint32_t size) noexcept
         : _weight(weight)
         , _size(size)
 {}
+
+fair_queue_ticket fair_queue_ticket::maximize(fair_queue_ticket a, fair_queue_ticket b) noexcept {
+    return fair_queue_ticket(std::max(a._weight, b._weight), std::max(a._size, b._size));
+}
 
 fair_queue_ticket fair_group_rover::maybe_ahead_of(const fair_group_rover& other) const noexcept {
     return fair_queue_ticket(std::max<int32_t>(_weight - other._weight, 0),

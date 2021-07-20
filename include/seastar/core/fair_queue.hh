@@ -65,6 +65,7 @@ public:
     /// Checks if the tickets fully equals to another one
     /// \param desc another \ref fair_queue_ticket to compare with
     bool operator==(const fair_queue_ticket& desc) const noexcept;
+    bool operator!=(const fair_queue_ticket& desc) const noexcept;
 
     std::chrono::microseconds duration_at_pace(float weight_pace, float size_pace) const noexcept;
 
@@ -75,6 +76,10 @@ public:
     explicit operator bool() const noexcept;
 
     friend std::ostream& operator<<(std::ostream& os, fair_queue_ticket t);
+
+    /// \returns a ticket with weight and size set to the
+    /// maximum of respective arguments' parameters
+    static fair_queue_ticket maximize(fair_queue_ticket a, fair_queue_ticket b) noexcept;
 
     /// \returns the normalized value of this \ref fair_queue_ticket along a base axis
     ///

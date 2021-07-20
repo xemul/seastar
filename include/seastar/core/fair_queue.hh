@@ -295,8 +295,8 @@ private:
         return desc.duration_at_pace(_config.ticket_weight_pace, _config.ticket_size_pace);
     }
 
-    bool grab_capacity(fair_queue_ticket cap) noexcept;
-    bool grab_pending_capacity(fair_queue_ticket cap) noexcept;
+    bool grab_capacity(fair_queue_entry& ent, fair_queue_ticket cap) noexcept;
+    bool grab_pending_capacity(fair_queue_entry& ent, fair_queue_ticket cap) noexcept;
 public:
     /// Constructs a fair queue with configuration parameters \c cfg.
     ///
@@ -353,7 +353,7 @@ public:
             Request& req = Request::from_fq_entry(ent);
             auto ticket = req.ticket_for_dispatch();
 
-            if (!grab_capacity(ticket)) {
+            if (!grab_capacity(ent, ticket)) {
                 break;
             }
 

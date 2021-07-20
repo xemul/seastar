@@ -24,6 +24,7 @@
 #include <boost/intrusive/slist.hpp>
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/core/circular_buffer.hh>
+#include <seastar/util/concepts.hh>
 #include <atomic>
 #include <queue>
 #include <chrono>
@@ -115,6 +116,13 @@ public:
 
 /// \addtogroup io-module
 /// @{
+
+SEASTAR_CONCEPT(
+template <typename Req>
+concept Dispatcheable = requires (Req rq) {
+    { rq.dispatch() } noexcept -> void;
+};
+)
 
 class fair_queue_entry {
     friend class fair_queue;
@@ -334,7 +342,9 @@ public:
     void notify_request_cancelled(fair_queue_entry& ent) noexcept;
 
     /// Try to execute new requests if there is capacity left in the queue.
-    void dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
+    template <typename Request>
+    SEASTAR_CONCEPT( requires std::is_nothrow_invocable_r_v<Request&, decltype(Request::from_fq_entry), fair_queue_entry&> && Dispatcheable<Request> )
+    void dispatch_requests() {
         while (!_handles.empty()) {
             priority_class_ptr h = _handles.top();
             if (h->_queue.empty()) {
@@ -343,6 +353,7 @@ public:
             }
 
             auto& ent = h->_queue.front();
+            Request& req = Request::from_fq_entry(ent);
             if (!grab_capacity(ent._ticket)) {
                 break;
             }
@@ -356,7 +367,7 @@ public:
                 push_priority_class(h);
             }
 
-            cb(ent);
+            req.dispatch();
         }
     }
 

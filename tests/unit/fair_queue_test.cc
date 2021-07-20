@@ -48,9 +48,13 @@ struct request {
         , index(index)
     {}
 
-    void submit() {
+    void dispatch() noexcept {
         handle(*this);
         delete this;
+    }
+
+    static request& from_fq_entry(fair_queue_entry& ent) noexcept {
+        return *boost::intrusive::get_parent_from_member(&ent, &request::fqent);
     }
 };
 
@@ -80,9 +84,7 @@ public:
     // before the queue is destroyed.
     unsigned tick(unsigned n = 1) {
         unsigned processed = 0;
-        _fq.dispatch_requests([] (fair_queue_entry& ent) {
-            boost::intrusive::get_parent_from_member(&ent, &request::fqent)->submit();
-        });
+        _fq.dispatch_requests<request>();
 
         for (unsigned i = 0; i < n; ++i) {
             std::vector<request> curr;
@@ -94,9 +96,7 @@ public:
                 _fq.notify_request_finished(req.fqent.ticket());
             }
 
-            _fq.dispatch_requests([] (fair_queue_entry& ent) {
-                boost::intrusive::get_parent_from_member(&ent, &request::fqent)->submit();
-            });
+            _fq.dispatch_requests<request>();
         }
         return processed;
     }

@@ -58,6 +58,15 @@ struct local_fq_entry {
     local_fq_entry(unsigned weight, unsigned index, Func&& f)
         : ent(seastar::fair_queue_ticket(weight, index))
         , submit(std::move(f)) {}
+
+    void dispatch() noexcept {
+        submit();
+        delete this;
+    }
+
+    static local_fq_entry& from_fq_entry(fair_queue_entry& ent) noexcept {
+        return *boost::intrusive::get_parent_from_member(&ent, &local_fq_entry::ent);
+    }
 };
 
 struct perf_fair_queue {
@@ -106,11 +115,7 @@ future<> perf_fair_queue::test(bool loc) {
         local.executed = 0;
 
         return do_until([&local] { return local.executed == requests_to_dispatch; }, [&local, loc] {
-            local.queue(loc).dispatch_requests([] (fair_queue_entry& ent) {
-                local_fq_entry* le = boost::intrusive::get_parent_from_member(&ent, &local_fq_entry::ent);
-                le->submit();
-                delete le;
-            });
+            local.queue(loc).dispatch_requests<local_fq_entry>();
             return make_ready_future<>();
         });
     });

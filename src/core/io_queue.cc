@@ -596,9 +596,7 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
 }
 
 void io_queue::poll_io_queue() {
-    _fq.dispatch_requests([] (fair_queue_entry& fqe) {
-        queued_io_request::from_fq_entry(fqe).dispatch();
-    });
+    _fq.dispatch_requests<queued_io_request>();
 }
 
 void io_queue::submit_request(io_desc_read_write* desc, internal::io_request req) noexcept {

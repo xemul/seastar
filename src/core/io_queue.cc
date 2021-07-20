@@ -217,7 +217,9 @@ public:
     }
 };
 
-internal::cancellable_queue::cancellable_queue(cancellable_queue&& o) noexcept
+namespace internal {
+
+cancellable_queue::cancellable_queue(cancellable_queue&& o) noexcept
         : _first(std::exchange(o._first, nullptr))
         , _rest(std::move(o._rest)) {
     if (_first != nullptr) {
@@ -225,7 +227,7 @@ internal::cancellable_queue::cancellable_queue(cancellable_queue&& o) noexcept
     }
 }
 
-internal::cancellable_queue& internal::cancellable_queue::operator=(cancellable_queue&& o) noexcept {
+cancellable_queue& cancellable_queue::operator=(cancellable_queue&& o) noexcept {
     if (this != &o) {
         _first = std::exchange(o._first, nullptr);
         _rest = std::move(o._rest);
@@ -236,14 +238,14 @@ internal::cancellable_queue& internal::cancellable_queue::operator=(cancellable_
     return *this;
 }
 
-internal::cancellable_queue::~cancellable_queue() {
+cancellable_queue::~cancellable_queue() {
     while (_first != nullptr) {
         queued_io_request::from_cq_link(*_first).cancel();
         pop_front();
     }
 }
 
-void internal::cancellable_queue::push_back(link& il) noexcept {
+void cancellable_queue::push_back(link& il) noexcept {
     if (_first == nullptr) {
         _first = &il;
         il._ref = this;
@@ -253,7 +255,7 @@ void internal::cancellable_queue::push_back(link& il) noexcept {
     }
 }
 
-void internal::cancellable_queue::pop_front() noexcept {
+void cancellable_queue::pop_front() noexcept {
     _first->_ref = nullptr;
     if (_rest.empty()) {
         _first = nullptr;
@@ -265,19 +267,29 @@ void internal::cancellable_queue::pop_front() noexcept {
     }
 }
 
-internal::intent_reference::intent_reference(io_intent* intent) noexcept : _intent(intent) {
+intent_reference::intent_reference(io_intent* intent) noexcept : _intent(intent) {
     if (_intent != nullptr) {
         intent->_refs.bind(*this);
     }
 }
 
-io_intent* internal::intent_reference::retrieve() const {
+io_intent* intent_reference::retrieve() const {
     if (is_cancelled()) {
         throw default_io_exception_factory::cancelled();
     }
 
     return _intent;
 }
+
+void io_sink::submit(io_completion* desc, io_request req) noexcept {
+    try {
+        _pending_io.emplace_back(std::move(req), desc);
+    } catch (...) {
+        desc->set_exception(std::current_exception());
+    }
+}
+
+} // internal namespace
 
 void
 io_queue::notify_request_finished(fair_queue_ticket ticket) noexcept {
@@ -611,14 +623,6 @@ io_queue::rename_priority_class(io_priority_class pc, sstring new_name) {
     if (_priority_classes.size() > pc.id() &&
             _priority_classes[pc.id()]) {
         _priority_classes[pc.id()]->rename(new_name, get_config().mountpoint);
-    }
-}
-
-void internal::io_sink::submit(io_completion* desc, internal::io_request req) noexcept {
-    try {
-        _pending_io.emplace_back(std::move(req), desc);
-    } catch (...) {
-        desc->set_exception(std::current_exception());
     }
 }
 

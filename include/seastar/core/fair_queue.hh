@@ -283,8 +283,8 @@ private:
     void pop_priority_class(priority_class_ptr pc);
 
     float normalize_factor() const;
-
     void normalize_stats();
+    void account_dispatched(fair_queue_ticket ticket, priority_class& pclass);
 
     // Estimated time to process the given ticket
     std::chrono::microseconds duration(fair_queue_ticket desc) const noexcept {

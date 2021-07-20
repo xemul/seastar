@@ -262,6 +262,26 @@ void fair_queue::notify_request_cancelled(fair_queue_entry& ent) noexcept {
     ent._ticket = fair_queue_ticket();
 }
 
+void fair_queue::account_dispatched(fair_queue_ticket ticket, priority_class& pclass) {
+    _resources_executing += ticket;
+    _resources_queued -= ticket;
+    _requests_executing++;
+    _requests_queued--;
+
+    auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
+    auto req_cost  = ticket.normalize(_group.maximum_capacity()) / pclass._shares;
+    auto cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
+    float next_accumulated = pclass._accumulated + cost;
+    while (std::isinf(next_accumulated)) {
+        normalize_stats();
+        // If we have renormalized, our time base will have changed. This should happen very infrequently
+        delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
+        cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
+        next_accumulated = pclass._accumulated + cost;
+    }
+    pclass._accumulated = next_accumulated;
+}
+
 void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
     while (_requests_queued) {
         priority_class_ptr h;
@@ -282,23 +302,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         pop_priority_class(h);
         h->_queue.pop_front();
 
-        _resources_executing += req._ticket;
-        _resources_queued -= req._ticket;
-        _requests_executing++;
-        _requests_queued--;
-
-        auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
-        auto req_cost  = req._ticket.normalize(_group.maximum_capacity()) / h->_shares;
-        auto cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
-        float next_accumulated = h->_accumulated + cost;
-        while (std::isinf(next_accumulated)) {
-            normalize_stats();
-            // If we have renormalized, our time base will have changed. This should happen very infrequently
-            delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
-            cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
-            next_accumulated = h->_accumulated + cost;
-        }
-        h->_accumulated = next_accumulated;
+        account_dispatched(req._ticket, *h);
 
         if (!h->_queue.empty()) {
             push_priority_class(h);

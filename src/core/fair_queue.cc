@@ -277,30 +277,4 @@ void fair_queue::account_dispatched(fair_queue_ticket ticket, priority_class& pc
     pclass._accumulated = next_accumulated;
 }
 
-void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
-    while (!_handles.empty()) {
-        priority_class_ptr h = _handles.top();
-        if (h->_queue.empty()) {
-            pop_priority_class(h);
-            continue;
-        }
-
-        auto& req = h->_queue.front();
-        if (!grab_capacity(req._ticket)) {
-            break;
-        }
-
-        pop_priority_class(h);
-        h->_queue.pop_front();
-
-        account_dispatched(req._ticket, *h);
-
-        if (!h->_queue.empty()) {
-            push_priority_class(h);
-        }
-
-        cb(req);
-    }
-}
-
 }

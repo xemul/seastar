@@ -336,7 +336,31 @@ public:
     void notify_request_cancelled(fair_queue_entry& ent) noexcept;
 
     /// Try to execute new requests if there is capacity left in the queue.
-    void dispatch_requests(std::function<void(fair_queue_entry&)> cb);
+    void dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
+        while (!_handles.empty()) {
+            priority_class_ptr h = _handles.top();
+            if (h->_queue.empty()) {
+                pop_priority_class(h);
+                continue;
+            }
+
+            auto& ent = h->_queue.front();
+            if (!grab_capacity(ent._ticket)) {
+                break;
+            }
+
+            pop_priority_class(h);
+            h->_queue.pop_front();
+
+            account_dispatched(ent._ticket, *h);
+
+            if (!h->_queue.empty()) {
+                push_priority_class(h);
+            }
+
+            cb(ent);
+        }
+    }
 
     clock_type next_pending_aio() const noexcept {
         if (_pending) {

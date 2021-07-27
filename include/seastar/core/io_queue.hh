@@ -162,11 +162,13 @@ private:
     fair_group _fg;
     const io_queue::config _config;
 
+    const io_queue::config& get_config() const noexcept { return _config; }
+
     static fair_group::config make_fair_group_config(io_queue::config qcfg) noexcept;
 };
 
 inline const io_queue::config& io_queue::get_config() const noexcept {
-    return _group->_config;
+    return _group->get_config();
 }
 
 inline size_t io_queue::capacity() const {

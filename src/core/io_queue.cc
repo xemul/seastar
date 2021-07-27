@@ -295,7 +295,7 @@ fair_queue::config io_queue::make_fair_queue_config(config iocfg) {
 io_queue::io_queue(io_group_ptr group, internal::io_sink& sink)
     : _priority_classes()
     , _group(std::move(group))
-    , _fq(_group->_fg, make_fair_queue_config(_group->_config))
+    , _fq(_group->_fg, make_fair_queue_config(get_config()))
     , _sink(sink)
 {
     seastar_logger.debug("Created io queue, multipliers {}:{}",

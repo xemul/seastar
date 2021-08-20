@@ -102,9 +102,23 @@ posix_file_impl::~posix_file_impl() {
 
 void
 posix_file_impl::query_dma_alignment(uint32_t block_size) {
-    dioattr da;
-    auto r = ::ioctl(_fd, XFS_IOC_DIOINFO, &da);
-    if (r == 0) {
+    struct dioattr_wrap {
+        bool initialized = false;
+        dioattr da;
+    };
+
+    static thread_local std::unordered_map<dev_t, dioattr_wrap> s_fstype;
+    dioattr_wrap& dw = s_fstype[_device_id];
+    dioattr& da = dw.da;
+
+    if (__builtin_expect(!dw.initialized, false)) {
+        if (::ioctl(_fd, XFS_IOC_DIOINFO, &da) != 0) {
+            return;
+        }
+        dw.initialized = true;
+    }
+
+    {
         _memory_dma_alignment = da.d_mem;
         _disk_read_dma_alignment = da.d_miniosz;
         // xfs wants at least the block size for writes

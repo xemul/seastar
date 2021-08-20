@@ -118,15 +118,13 @@ posix_file_impl::query_dma_alignment(uint32_t block_size) {
         dw.initialized = true;
     }
 
-    {
-        _memory_dma_alignment = da.d_mem;
-        _disk_read_dma_alignment = da.d_miniosz;
-        // xfs wants at least the block size for writes
-        // FIXME: really read the block size
-        _disk_write_dma_alignment = std::max<unsigned>(da.d_miniosz, block_size);
-        static bool xfs_with_relaxed_overwrite_alignment = kernel_uname().whitelisted({"5.12"});
-        _disk_overwrite_dma_alignment = xfs_with_relaxed_overwrite_alignment ? da.d_miniosz : _disk_write_dma_alignment;
-    }
+    _memory_dma_alignment = da.d_mem;
+    _disk_read_dma_alignment = da.d_miniosz;
+    // xfs wants at least the block size for writes
+    // FIXME: really read the block size
+    _disk_write_dma_alignment = std::max<unsigned>(da.d_miniosz, block_size);
+    static bool xfs_with_relaxed_overwrite_alignment = kernel_uname().whitelisted({"5.12"});
+    _disk_overwrite_dma_alignment = xfs_with_relaxed_overwrite_alignment ? da.d_miniosz : _disk_write_dma_alignment;
 }
 
 void posix_file_impl::configure_io_lengths() noexcept {

@@ -26,6 +26,7 @@
 #include <seastar/core/circular_buffer.hh>
 #include <atomic>
 #include <queue>
+#include <list>
 #include <chrono>
 #include <unordered_set>
 #include <optional>
@@ -75,6 +76,7 @@ public:
     fair_queue_ticket operator*(double k) const noexcept;
 
     std::chrono::microseconds duration_at_pace(float weight_pace, float size_pace) const noexcept;
+    std::chrono::milliseconds duration_at_rate(fair_queue_ticket rate) const noexcept;
 
     /// \returns true if the fair_queue_ticket represents a non-zero quantity.
     ///
@@ -139,12 +141,44 @@ public:
 };
 
 /// \cond internal
+// A leaky-bucket-based rate-limiter.
+class rate_limiter {
+    // The amount of tickets that are allowed to be consumed
+    // Call check_credit(ticket), then do whatever you want, then call
+    // consume(ticket) if the former returned true
+    fair_queue_ticket _credit;
+
+    // Maximum value for the _credit when being refilled
+    fair_queue_ticket _limit;
+    // The amount of tickets to return back to _credit per ms
+    fair_queue_ticket _rate_ms;
+    // Last time the _credit was replenished
+    std::chrono::steady_clock::time_point _last_refill;
+
+public:
+    rate_limiter() noexcept
+            : _credit(fair_queue_ticket(std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()))
+            , _limit(fair_queue_ticket(std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()))
+            , _rate_ms(fair_queue_ticket(std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()))
+            , _last_refill(std::chrono::steady_clock::now())
+    {}
+
+    void consume(fair_queue_ticket desc) noexcept {
+        _credit -= desc;
+    }
+
+    bool check_credit(fair_queue_ticket desc) noexcept;
+    std::chrono::steady_clock::time_point next_refill(fair_queue_ticket desc) const noexcept;
+};
+
+/// \cond internal
 class priority_class {
     friend class fair_queue;
     uint32_t _shares = 0;
     float _accumulated = 0;
     fair_queue_entry::container_list_t _queue;
     bool _queued = false;
+    rate_limiter _rl;
 
     friend struct shared_ptr_no_esft<priority_class>;
     explicit priority_class(uint32_t shares) noexcept : _shares(std::max(shares, 1u)) {}
@@ -261,6 +295,8 @@ private:
     clock_type _base;
     using prioq = std::priority_queue<priority_class_ptr, std::vector<priority_class_ptr>, class_compare>;
     prioq _handles;
+    using delayq = std::list<priority_class_ptr>;
+    delayq _delayed;
     std::unordered_set<priority_class_ptr> _all_classes;
 
     /*
@@ -285,10 +321,12 @@ private:
 
     void push_priority_class(priority_class_ptr pc);
     void pop_priority_class(priority_class_ptr pc);
+    void delay_priority_class(priority_class_ptr pc);
 
     float normalize_factor() const;
 
     void normalize_stats();
+    void refill_delayed();
 
     // Estimated time to process the given ticket
     std::chrono::microseconds duration(fair_queue_ticket desc) const noexcept {
@@ -356,6 +394,16 @@ public:
             fair_group_rover pending_head = _pending->orig_tail + _pending->cap;
             fair_queue_ticket over = pending_head.maybe_ahead_of(_group.head());
             return std::chrono::steady_clock::now() + duration(over);
+        }
+        if (!_delayed.empty()) {
+            clock_type next = std::chrono::steady_clock::time_point::max();
+            for (const auto& pc : _delayed) {
+                auto pc_next = pc->_rl.next_refill(pc->_queue.front()._ticket);
+                if (pc_next < next) {
+                    next = pc_next;
+                }
+            }
+            return next;
         }
 
         return std::chrono::steady_clock::time_point::max();

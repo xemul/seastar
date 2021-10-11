@@ -154,6 +154,12 @@ void fair_queue::push_priority_class(priority_class_ptr pc) {
     }
 }
 
+void fair_queue::delay_priority_class(priority_class_ptr pc) {
+    assert(pc->_queued);
+    _handles.pop();
+    _delayed.push_back(pc);
+}
+
 void fair_queue::pop_priority_class(priority_class_ptr pc) {
     assert(pc->_queued);
     pc->_queued = false;
@@ -176,6 +182,14 @@ void fair_queue::normalize_stats() {
 std::chrono::microseconds fair_queue_ticket::duration_at_pace(float weight_pace, float size_pace) const noexcept {
     unsigned long dur = ((_weight * weight_pace) + (_size * size_pace));
     return std::chrono::microseconds(dur);
+}
+
+std::chrono::milliseconds fair_queue_ticket::duration_at_rate(fair_queue_ticket rate_ms) const noexcept {
+    auto div_round_up = [] (uint32_t num, uint32_t den) noexcept -> uint32_t {
+        return num + den - 1 / den;
+    };
+
+    return std::chrono::milliseconds(std::max(div_round_up(_weight, rate_ms._weight), div_round_up(_size, rate_ms._size)));
 }
 
 bool fair_queue::grab_pending_capacity(fair_queue_ticket cap) noexcept {
@@ -262,7 +276,59 @@ void fair_queue::notify_request_cancelled(fair_queue_entry& ent) noexcept {
     ent._ticket = fair_queue_ticket();
 }
 
+std::chrono::steady_clock::time_point rate_limiter::next_refill(fair_queue_ticket desc) const noexcept {
+    return std::chrono::steady_clock::now() +
+        (_credit <= desc ? (desc - _credit).duration_at_rate(_rate_ms) : std::chrono::milliseconds(0));
+}
+
+bool rate_limiter::check_credit(fair_queue_ticket t) noexcept {
+    if (t <= _credit) {
+        return true;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    auto delta = _rate_ms * std::chrono::duration_cast<std::chrono::duration<double>>(now - _last_refill).count() * 1000.0;
+    if (_limit - _credit <= delta) {
+        // Too much time passed, the accumulated credit exceeds the limit.
+        _credit = _limit;
+        _last_refill = now;
+        return true;
+    }
+
+    if (t <= _credit + delta) {
+        _credit += delta;
+        // NB: This is not 100% accurate. Rounding errors result in fractions
+        // of ticket being lost and this accumulates over time. We can account
+        // for that by increasing the _last_refill on the 'delta / _rate_ms'
+        // value, but the trick is that ticket value is 2d and will result in
+        // different corrections for each component.
+        _last_refill = now;
+        return true;
+    }
+
+    return false;
+}
+
+void fair_queue::refill_delayed() {
+    auto i = _delayed.begin();
+
+    while (i != _delayed.end()) {
+        auto& pc = *i;
+
+        auto& req = pc->_queue.front();
+        if (pc->_rl.check_credit(req._ticket)) {
+            i = _delayed.erase(i);
+            _handles.push(pc);
+            assert(pc->_queued);
+        } else {
+            i++;
+        }
+    }
+}
+
 void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
+    refill_delayed();
+
     while (!_handles.empty()) {
         priority_class_ptr h = _handles.top();
         if (h->_queue.empty()) {
@@ -271,6 +337,11 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         }
 
         auto& req = h->_queue.front();
+        if (!h->_rl.check_credit(req._ticket)) {
+            delay_priority_class(h);
+            continue;
+        }
+
         if (!grab_capacity(req._ticket)) {
             break;
         }
@@ -278,6 +349,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         pop_priority_class(h);
         h->_queue.pop_front();
 
+        h->_rl.consume(req._ticket);
         _resources_executing += req._ticket;
         _resources_queued -= req._ticket;
         _requests_executing++;

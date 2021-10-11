@@ -65,6 +65,14 @@ public:
     /// Checks if the tickets fully equals to another one
     /// \param desc another \ref fair_queue_ticket to compare with
     bool operator==(const fair_queue_ticket& desc) const noexcept;
+    /// Checks if the tickets less-or-equal with all its components than another one
+    /// \param desc another \ref fair_queue_ticket to compare with
+    bool operator<=(const fair_queue_ticket& desc) const noexcept;
+
+    /// Multiplies each component of the ticket by the provided factor
+    /// If the resulting value would overflow it's set to maxumum possible
+    /// \param k the factor value
+    fair_queue_ticket operator*(double k) const noexcept;
 
     std::chrono::microseconds duration_at_pace(float weight_pace, float size_pace) const noexcept;
 

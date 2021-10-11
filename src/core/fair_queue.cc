@@ -69,12 +69,25 @@ fair_queue_ticket& fair_queue_ticket::operator-=(fair_queue_ticket desc) noexcep
     return *this;
 }
 
+fair_queue_ticket fair_queue_ticket::operator*(double k) const noexcept {
+    auto multiply = [] (uint32_t a, double b) noexcept -> uint32_t {
+        return (b < 1.0 || a < std::numeric_limits<uint32_t>::max() / b) ?
+            a * b : std::numeric_limits<uint32_t>::max();
+    };
+
+    return fair_queue_ticket(multiply(_weight, k), multiply(_size, k));
+}
+
 fair_queue_ticket::operator bool() const noexcept {
     return (_weight > 0) || (_size > 0);
 }
 
 bool fair_queue_ticket::operator==(const fair_queue_ticket& o) const noexcept {
     return _weight == o._weight && _size == o._size;
+}
+
+bool fair_queue_ticket::operator<=(const fair_queue_ticket& o) const noexcept {
+    return _weight <= o._weight && _size <= o._size;
 }
 
 std::ostream& operator<<(std::ostream& os, fair_queue_ticket t) {

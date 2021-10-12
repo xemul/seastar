@@ -205,6 +205,12 @@ future<> reactor::update_shares_for_queues(io_priority_class pc, uint32_t shares
     });
 }
 
+future<> reactor::set_rate_limit_for_queues(io_priority_class pc, size_t bytes_per_second, unsigned ops_per_second) {
+    return parallel_for_each(_io_queues, [pc, bytes_per_second, ops_per_second] (auto& queue) {
+        return queue.second->set_rate_limit_for_class(pc, bytes_per_second, ops_per_second);
+    });
+}
+
 future<> reactor::rename_queues(io_priority_class pc, sstring new_name) noexcept {
     return futurize_invoke([this, pc, new_name = std::move(new_name)] {
         for (auto&& queue : _io_queues) {

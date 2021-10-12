@@ -167,6 +167,13 @@ public:
         _credit -= desc;
     }
 
+    void update(fair_queue_ticket limit, fair_queue_ticket rate) noexcept {
+        _limit = limit;
+        _rate_ms = rate;
+        _credit = limit;
+        _last_refill = std::chrono::steady_clock::now();
+    }
+
     bool check_credit(fair_queue_ticket desc) noexcept;
     std::chrono::steady_clock::time_point next_refill(fair_queue_ticket desc) const noexcept;
 };
@@ -191,6 +198,10 @@ public:
 
     void update_shares(uint32_t shares) noexcept {
         _shares = (std::max(shares, 1u));
+    }
+
+    void set_rate_limit(fair_queue_ticket limit, fair_queue_ticket rate) noexcept {
+        _rl.update(limit, rate);
     }
 };
 /// \endcond

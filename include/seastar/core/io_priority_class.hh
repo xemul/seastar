@@ -58,6 +58,13 @@ public:
     /// \return a future that is ready when the share update is applied
     future<> update_shares(uint32_t shares) const;
 
+    /// \brief (Re)Sets the throttling configuration for a given priority class
+    ///
+    /// \param bytes_per_second the throughput value. Zero means "no throttling"
+    /// \param ops_per_second the IOPS value. Zero means "no throttling"
+    /// \return a future that is ready when the throttling is applied
+    future<> set_rate_limit(size_t bytes_per_second, unsigned ops_per_second) const;
+
     /// Renames an io priority class
     ///
     /// Renames an `io_priority_class` previously created with register_one_priority_class().

@@ -99,6 +99,7 @@ public:
         size_t disk_read_saturation_length = std::numeric_limits<size_t>::max();
         size_t disk_write_saturation_length = std::numeric_limits<size_t>::max();
         sstring mountpoint = "undefined";
+        double rate_limit_period_sec = 0.01; // 10ms
     };
 
     io_queue(io_group_ptr group, internal::io_sink& sink);
@@ -138,6 +139,7 @@ public:
     dev_t dev_id() const noexcept;
 
     future<> update_shares_for_class(io_priority_class pc, size_t new_shares);
+    future<> set_rate_limit_for_class(io_priority_class pc, size_t bytes_per_second, unsigned ops_per_second);
     void rename_priority_class(io_priority_class pc, sstring new_name);
 
     struct request_limits {

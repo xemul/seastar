@@ -390,6 +390,10 @@ future<> io_priority_class::update_shares(uint32_t shares) const {
     return engine().update_shares_for_queues(*this, shares);
 }
 
+future<> io_priority_class::set_rate_limit(uint64_t bytes_per_second, uint32_t ops_per_second) const {
+    return engine().set_rate_limit_for_queues(*this, bytes_per_second, ops_per_second);
+}
+
 bool io_priority_class::rename_registered(sstring new_name) {
     std::lock_guard<std::mutex> guard(_register_lock);
     for (unsigned i = 0; i < _max_classes; ++i) {
@@ -603,6 +607,41 @@ io_queue::update_shares_for_class(const io_priority_class pc, size_t new_shares)
     return futurize_invoke([this, pc, new_shares] {
         auto& pclass = find_or_create_class(pc);
         pclass.pclass()->update_shares(new_shares);
+    });
+}
+
+future<> io_queue::set_rate_limit_for_class(const io_priority_class pc, size_t bytes_per_second, unsigned ops_per_second) {
+    return futurize_invoke([this, pc, bytes_per_second, ops_per_second] {
+        unsigned weight_rate = std::numeric_limits<unsigned>::max();
+        unsigned max_weight = std::numeric_limits<unsigned>::max();
+
+        size_t size_rate = std::numeric_limits<size_t>::max();
+        size_t max_size = std::numeric_limits<size_t>::max();
+
+        if (ops_per_second != 0 && ops_per_second < weight_rate / read_request_base_count) {
+            weight_rate = ops_per_second * read_request_base_count / 1000;
+            if (weight_rate == 0) {
+                throw std::runtime_error("Extremely low IOPS limit");
+            }
+            // At least one request must fit
+            max_weight = std::max<uint32_t>(ops_per_second * read_request_base_count * get_config().rate_limit_period_sec, read_request_base_count);
+        }
+
+        if (bytes_per_second != 0 && bytes_per_second < size_rate / read_request_base_count) {
+            size_rate = bytes_per_second * read_request_base_count / 1000;
+            if (size_rate >> request_ticket_size_shift == 0) {
+                throw std::runtime_error("Extremely low throughput limit");
+            }
+            // The max_bytes_count sized request must fit
+            max_size = std::max<uint32_t>(bytes_per_second * read_request_base_count * get_config().rate_limit_period_sec, get_config().max_bytes_count);
+        }
+
+        fair_queue_ticket limit(max_weight, max_size >> request_ticket_size_shift);
+        fair_queue_ticket rate(weight_rate, size_rate >> request_ticket_size_shift);
+        io_log.debug("Adjust rate limit for {} pc: bps {} ops {} -> limit {} rate {}", pc.id(), bytes_per_second, ops_per_second, limit, rate);
+
+        auto& pclass = find_or_create_class(pc);
+        pclass.pclass()->set_rate_limit(limit, rate);
     });
 }
 

@@ -94,6 +94,8 @@ public:
 
 struct pclass_info {
     unsigned shares = 10;
+    size_t bytes_per_second = 0;
+    unsigned ops_per_second = 0;
 };
 
 struct shard_info {
@@ -211,7 +213,9 @@ public:
         _start = std::chrono::steady_clock::now();
         return with_scheduling_group(_sg, [this, stop] {
             if (parallelism() != 0) {
-                return issue_requests_in_parallel(stop, parallelism());
+                return _iop.set_rate_limit(_config.pclass_info.bytes_per_second, _config.pclass_info.ops_per_second).then([this, stop] {
+                    return issue_requests_in_parallel(stop, parallelism());
+                });
             } else /* rps() != 0 */ {
                 assert(rps() != 0);
                 return issue_requests_at_rate(stop, rps());
@@ -639,6 +643,12 @@ struct convert<pclass_info> {
     static bool decode(const Node& node, pclass_info& pl) {
         if (node["shares"]) {
             pl.shares = node["shares"].as<unsigned>();
+        }
+        if (node["bytes_per_second"]) {
+            pl.bytes_per_second = node["bytes_per_second"].as<byte_size>().size;
+        }
+        if (node["ops_per_second"]) {
+            pl.ops_per_second = node["ops_per_second"].as<unsigned>();
         }
         return true;
     }

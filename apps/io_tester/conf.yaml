@@ -4,8 +4,9 @@
   shard_info:
     parallelism: 10
     reqsize: 256kB
-    shares: 10
     think_time: 0
+  pclass_info:
+    shares: 10
 
 - name: latency_reads
   shards: [0]
@@ -14,8 +15,9 @@
   shard_info:
     parallelism: 1
     reqsize: 512
-    shares: 100
     think_time: 1000us
+  pclass_info:
+    shares: 100
 
 - name: cpu_hog
   shards: [0]

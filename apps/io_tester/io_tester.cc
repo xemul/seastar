@@ -92,10 +92,13 @@ public:
     }
 };
 
+struct pclass_info {
+    unsigned shares = 10;
+};
+
 struct shard_info {
     unsigned parallelism = 0;
     unsigned rps = 0;
-    unsigned shares = 10;
     uint64_t request_size = 4 << 10;
     std::chrono::duration<float> think_time = 0ms;
     std::chrono::duration<float> execution_time = 1ms;
@@ -113,6 +116,7 @@ struct job_config {
     request_type type;
     shard_config shard_placement;
     ::shard_info shard_info;
+    ::pclass_info pclass_info;
     ::options options;
     // size of each individual file. Every class and every shard have its file, so in a normal
     // system with many shards we'll naturally have many files and that will push the data out
@@ -152,7 +156,7 @@ public:
     class_data(job_config cfg)
         : _config(std::move(cfg))
         , _alignment(_config.shard_info.request_size >= 4096 ? 4096 : 512)
-        , _iop(io_priority_class::register_one(name(), _config.shard_info.shares))
+        , _iop(io_priority_class::register_one(name(), _config.pclass_info.shares))
         , _sg(cfg.shard_info.scheduling_group)
         , _latencies(extended_p_square_probabilities = quantiles)
         , _pos_distribution(0,  _config.file_size / _config.shard_info.request_size)
@@ -286,7 +290,7 @@ protected:
     }
 
     unsigned shares() const {
-        return _config.shard_info.shares;
+        return _config.pclass_info.shares;
     }
 
     std::chrono::duration<float> total_duration() const {
@@ -617,9 +621,6 @@ struct convert<shard_info> {
             return false;
         }
 
-        if (node["shares"]) {
-            sl.shares = node["shares"].as<unsigned>();
-        }
         if (node["reqsize"]) {
             sl.request_size = node["reqsize"].as<byte_size>().size;
         }
@@ -632,6 +633,17 @@ struct convert<shard_info> {
         return true;
     }
 };
+
+template<>
+struct convert<pclass_info> {
+    static bool decode(const Node& node, pclass_info& pl) {
+        if (node["shares"]) {
+            pl.shares = node["shares"].as<unsigned>();
+        }
+        return true;
+    }
+};
+
 
 template<>
 struct convert<options> {
@@ -659,6 +671,9 @@ struct convert<job_config> {
         }
         if (node["shard_info"]) {
             cl.shard_info = node["shard_info"].as<shard_info>();
+        }
+        if (node["pclass_info"]) {
+            cl.pclass_info = node["pclass_info"].as<pclass_info>();
         }
         if (node["options"]) {
             cl.options = node["options"].as<options>();
@@ -778,7 +793,7 @@ int main(int ac, char** av) {
             auto reqs = doc.as<std::vector<job_config>>();
 
             parallel_for_each(reqs, [] (auto& r) {
-                return seastar::create_scheduling_group(r.name, r.shard_info.shares).then([&r] (seastar::scheduling_group sg) {
+                return seastar::create_scheduling_group(r.name, r.pclass_info.shares).then([&r] (seastar::scheduling_group sg) {
                     r.shard_info.scheduling_group = sg;
                 });
             }).get();

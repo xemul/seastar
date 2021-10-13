@@ -298,7 +298,7 @@ io_queue::io_queue(io_group_ptr group, internal::io_sink& sink)
     , _fq(_group->_fg, make_fair_queue_config(_group->_config))
     , _sink(sink)
 {
-    seastar_logger.debug("Created io queue, multipliers {}:{}",
+    io_log.debug("Created io queue, multipliers {}:{}",
             get_config().disk_req_write_to_read_multiplier,
             get_config().disk_bytes_write_to_read_multiplier);
 }
@@ -325,7 +325,7 @@ fair_group::config io_group::make_fair_group_config(io_queue::config qcfg) noexc
      * request_fq_ticket() method.
      */
     if (max_req_count < max_req_count_min) {
-        seastar_logger.warn("The disk request rate is too low, configuring it to {}, but you may experience latency problems", max_req_count_min);
+        io_log.warn("The disk request rate is too low, configuring it to {}, but you may experience latency problems", max_req_count_min);
         max_req_count = max_req_count_min;
     }
     return fair_group::config(max_req_count,
@@ -335,7 +335,7 @@ fair_group::config io_group::make_fair_group_config(io_queue::config qcfg) noexc
 io_group::io_group(io_queue::config io_cfg) noexcept
     : _fg(make_fair_group_config(io_cfg))
     , _config(io_cfg) {
-    seastar_logger.debug("Created io group, limits {}:{}", io_cfg.max_req_count, io_cfg.max_bytes_count);
+    io_log.debug("Created io group, limits {}:{}", io_cfg.max_req_count, io_cfg.max_bytes_count);
 }
 
 io_queue::~io_queue() {

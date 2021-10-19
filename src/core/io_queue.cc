@@ -53,8 +53,10 @@ struct default_io_exception_factory {
 
 class priority_class_data {
     priority_class_ptr _ptr;
-    size_t _bytes;
-    uint64_t _ops;
+    size_t _rbytes;
+    uint64_t _rops;
+    size_t _wbytes;
+    uint64_t _wops;
     uint32_t _nr_queued;
     uint32_t _nr_executing;
     std::chrono::duration<double> _queue_time;
@@ -69,8 +71,10 @@ public:
 
     priority_class_data(sstring name, sstring mountpoint, priority_class_ptr ptr)
         : _ptr(ptr)
-        , _bytes(0)
-        , _ops(0)
+        , _rbytes(0)
+        , _rops(0)
+        , _wbytes(0)
+        , _wops(0)
         , _nr_queued(0)
         , _nr_executing(0)
         , _queue_time(0)
@@ -84,9 +88,14 @@ public:
         _nr_queued++;
     }
 
-    void on_dispatch(size_t len, std::chrono::duration<double> lat) noexcept {
-        _ops++;
-        _bytes += len;
+    void on_dispatch(internal::io_direction_and_length dnl, std::chrono::duration<double> lat) noexcept {
+        if (dnl.is_write()) {
+            _wops++;
+            _wbytes += dnl.length();
+        } else {
+            _rops++;
+            _rbytes += dnl.length();
+        }
         _queue_time = lat;
         _total_queue_time += lat;
         _nr_queued--;
@@ -146,9 +155,9 @@ public:
         delete this;
     }
 
-    void dispatch(size_t len, std::chrono::steady_clock::time_point queued) noexcept {
+    void dispatch(internal::io_direction_and_length dnl, std::chrono::steady_clock::time_point queued) noexcept {
         auto now = std::chrono::steady_clock::now();
-        _pclass.on_dispatch(len, std::chrono::duration_cast<std::chrono::duration<double>>(now - queued));
+        _pclass.on_dispatch(dnl, std::chrono::duration_cast<std::chrono::duration<double>>(now - queued));
         _dispatched = now;
     }
 
@@ -190,7 +199,7 @@ public:
 
         io_log.trace("dev {} : req {} submit", _ioq.dev_id(), fmt::ptr(&*_desc));
         _intent.maybe_dequeue();
-        _desc->dispatch(_dnl.length(), _started);
+        _desc->dispatch(_dnl, _started);
         _ioq.submit_request(_desc.release(), std::move(*this));
         delete this;
     }
@@ -457,8 +466,14 @@ priority_class_data::register_stats(sstring name, sstring mountpoint) {
     auto class_label_type = sm::label("class");
     auto class_label = class_label_type(name);
     new_metrics.add_group("io_queue", {
-            sm::make_derive("total_bytes", _bytes, sm::description("Total bytes passed in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),
-            sm::make_derive("total_operations", _ops, sm::description("Total operations passed in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),
+            sm::make_derive("total_bytes", [this] { return _rbytes + _wbytes; },
+                    sm::description("Total bytes passed in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),
+            sm::make_derive("total_operations", [this] { return _rops + _wops; },
+                    sm::description("Total operations passed in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),
+            sm::make_derive("total_read_bytes", _rbytes, sm::description("Total read bytes passed in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),
+            sm::make_derive("total_read_ops", _rops, sm::description("Total read operations passed in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),
+            sm::make_derive("total_write_bytes", _wbytes, sm::description("Total write bytes passed in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),
+            sm::make_derive("total_write_ops", _wops, sm::description("Total write operations passed in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),
             sm::make_derive("total_delay_sec", [this] {
                     return _total_queue_time.count();
                 }, sm::description("Total time spent in the queue"), {io_queue_shard(shard), sm::shard_label(owner), mountlabel, class_label}),

@@ -152,8 +152,8 @@ void fair_queue::pop_priority_class(priority_class_ptr pc) {
     _handles.pop();
 }
 
-float fair_queue::normalize_factor() const {
-    return std::numeric_limits<float>::min();
+priority_class::accumulator_t fair_queue::normalize_factor() const {
+    return std::numeric_limits<priority_class::accumulator_t>::min();
 }
 
 void fair_queue::normalize_stats() {
@@ -282,7 +282,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
         auto req_cost  = req._ticket.normalize(_group.maximum_capacity()) / h->_shares;
         auto cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
-        float next_accumulated = h->_accumulated + cost;
+        priority_class::accumulator_t next_accumulated = h->_accumulated + cost;
         while (std::isinf(next_accumulated)) {
             normalize_stats();
             // If we have renormalized, our time base will have changed. This should happen very infrequently

@@ -116,9 +116,20 @@ arg_parser.add_argument('--without-demos', dest='exclude_demos', action='store_t
 arg_parser.add_argument('--split-dwarf', dest='split_dwarf', action='store_true', default=False,
                         help='use of split dwarf (https://gcc.gnu.org/wiki/DebugFission) to speed up linking')
 arg_parser.add_argument('--heap-profiling', dest='heap_profiling', action='store_true', default=False, help='Enable heap profiling')
+arg_parser.add_argument('--explicit-io-classes', dest='explicit_io_classes', action='store_true', default=False, help='Make all IO methods require explicit IO class argument')
 add_tristate(arg_parser, name='deferred-action-require-noexcept', dest='deferred_action_require_noexcept', help='noexcept requirement for deferred actions', default=True)
 arg_parser.add_argument('--prefix', dest='install_prefix', default='/usr/local', help='Root installation path of Seastar files')
 args = arg_parser.parse_args()
+
+if args.explicit_io_classes:
+    if int(args.api_level) < 7:
+        raise Exception('The --no-default-io-class option can only be used with API level >= 7')
+    if not args.exclude_tests:
+        raise Exception('Tests cannot be built with --no-default-io-class (use --without-tests)')
+    if not args.exclude_apps:
+        raise Exception('Apps cannot be built with --no-default-io-class (use --without-apps)')
+    if not args.exclude_demos:
+        raise Exception('Demos cannot be built with --no-default-io-class (use --without-demos)')
 
 def identify_best_dialect(dialects, compiler):
     """Returns the first C++ dialect accepted by the compiler in the sequence,
@@ -200,6 +211,7 @@ def configure_mode(mode):
         tr(args.alloc_page_size, 'ALLOC_PAGE_SIZE'),
         tr(args.split_dwarf, 'SPLIT_DWARF'),
         tr(args.heap_profiling, 'HEAP_PROFILING'),
+        tr(args.explicit_io_classes, 'EXPLICIT_IO_CLASSES'),
         tr(args.deferred_action_require_noexcept, 'DEFERRED_ACTION_REQUIRE_NOEXCEPT'),
         tr(args.unused_result_error, 'UNUSED_RESULT_ERROR'),
         tr(args.debug_shared_ptr, 'DEBUG_SHARED_PTR', value_when_none='default'),

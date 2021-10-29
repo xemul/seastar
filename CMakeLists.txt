@@ -272,6 +272,10 @@ option (Seastar_HEAP_PROFILING
     "Enable heap profiling. No effect when Seastar is compiled with the default allocator."
     OFF)
 
+option (Seastar_EXPLICIT_IO_CLASSES
+    "Force all IO methods to require explicit IO priority class argument."
+    OFF)
+
 option (Seastar_DEFERRED_ACTION_REQUIRE_NOEXCEPT
     "Enable noexcept requirement for deferred actions."
     ON)
@@ -861,6 +865,12 @@ if (Seastar_HEAP_PROFILING)
       SOURCE "src/core/memory.cc"
       PROPERTY
       COMPILE_DEFINITIONS SEASTAR_HEAPPROF)
+endif ()
+
+if (Seastar_EXPLICIT_IO_CLASSES)
+  target_compile_definitions (seastar
+      PUBLIC
+      SEASTAR_EXPLICIT_IO_CLASSES)
 endif ()
 
 if (Seastar_DEFERRED_ACTION_REQUIRE_NOEXCEPT)

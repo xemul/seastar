@@ -26,6 +26,7 @@
 #include <seastar/core/circular_buffer.hh>
 #include <seastar/util/noncopyable_function.hh>
 #include <seastar/core/reactor.hh>
+#include <seastar/util/math.hh>
 #include <queue>
 #include <chrono>
 #include <unordered_set>
@@ -275,13 +276,13 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
 
         auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
         auto req_cost  = req._ticket.normalize(_group.maximum_capacity()) / h->_shares;
-        auto cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
+        auto cost  = util::exp<priority_class::accumulator_t>(1.0f/_config.tau.count() * delta.count()) * req_cost;
         priority_class::accumulator_t next_accumulated = h->_accumulated + cost;
         while (std::isinf(next_accumulated)) {
             normalize_stats();
             // If we have renormalized, our time base will have changed. This should happen very infrequently
             delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
-            cost  = expf(1.0f/_config.tau.count() * delta.count()) * req_cost;
+            cost  = util::exp<priority_class::accumulator_t>(1.0f/_config.tau.count() * delta.count()) * req_cost;
             next_accumulated = h->_accumulated + cost;
         }
         h->_accumulated = next_accumulated;

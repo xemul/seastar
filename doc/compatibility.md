@@ -72,6 +72,8 @@ versions of the API. For example.
      server_socket::accept() API that returns a non-variadic
      future
    - Seastar_API_LEVEL=6 makes futures non-variadic
+   - Seastar_API_LEVEL=7 removes priority class from fstream options,
+     it should be passed as argument instead
 
 Applications can use an old API_LEVEL during a transition
 period, fix their code, and move to the new API_LEVEL.
@@ -109,6 +111,7 @@ API Level History
 | 2   |  2019-07  | 2020-04 | Non-variadic futures in socket::accept()     |
 | 3   |  2020-05  |         | make_file_data_sink() closes file and returns a future<>  |
 | 4   |  2020-06  |         | Non-variadic futures in when_all_succeed()   |
+| 7   |  2021-10  |         | FStream options no longer carry io_priority_class |
 
 
 Note: The "mandatory" column indicates when backwards compatibility

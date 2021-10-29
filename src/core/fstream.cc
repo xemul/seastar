@@ -72,6 +72,7 @@ class file_data_source_impl : public data_source_impl {
     reactor& _reactor = engine();
     file _file;
     file_input_stream_options _options;
+    io_priority_class _pc;
     uint64_t _pos;
     uint64_t _remain;
     circular_buffer<issued_read> _read_buffers;
@@ -190,8 +191,8 @@ private:
         _dropped_reads = _dropped_reads.then([f = std::move(f)] () mutable { return std::move(f); });
     }
 public:
-    file_data_source_impl(file f, uint64_t offset, uint64_t len, file_input_stream_options options)
-            : _file(std::move(f)), _options(options), _pos(offset), _remain(len), _current_read_ahead(get_initial_read_ahead())
+    file_data_source_impl(file f, uint64_t offset, uint64_t len, file_input_stream_options options, io_priority_class pc)
+            : _file(std::move(f)), _options(options), _pc(pc), _pos(offset), _remain(len), _current_read_ahead(get_initial_read_ahead())
     {
         _options.buffer_size = select_buffer_size(_options.buffer_size, _file.disk_read_max_length());
         _current_buffer_size = _options.buffer_size;
@@ -292,7 +293,7 @@ private:
             auto len = end - start;
             auto actual_size = std::min(end - _pos, _remain);
             _read_buffers.emplace_back(_pos, actual_size, futurize_invoke([&] {
-                    return _file.dma_read_bulk<char>(start, len, _options.io_priority_class, &_intent);
+                    return _file.dma_read_bulk<char>(start, len, _pc, &_intent);
             }).then_wrapped(
                     [this, start, pos = _pos, remain = _remain] (future<temporary_buffer<char>> ret) {
                 --_reads_in_progress;
@@ -326,15 +327,20 @@ private:
 
 class file_data_source : public data_source {
 public:
-    file_data_source(file f, uint64_t offset, uint64_t len, file_input_stream_options options)
+    file_data_source(file f, uint64_t offset, uint64_t len, file_input_stream_options options, io_priority_class pc)
         : data_source(std::make_unique<file_data_source_impl>(
-                std::move(f), offset, len, options)) {}
+                std::move(f), offset, len, options, pc)) {}
 };
 
+template <typename Options>
+io_priority_class get_pclass_from_options(const Options& opt) noexcept {
+    return opt.io_priority_class;
+}
 
 input_stream<char> make_file_input_stream(
         file f, uint64_t offset, uint64_t len, file_input_stream_options options) {
-    return input_stream<char>(file_data_source(std::move(f), offset, len, std::move(options)));
+    io_priority_class pclass = get_pclass_from_options(options);
+    return input_stream<char>(file_data_source(std::move(f), offset, len, std::move(options), pclass));
 }
 
 input_stream<char> make_file_input_stream(
@@ -351,13 +357,14 @@ input_stream<char> make_file_input_stream(
 class file_data_sink_impl : public data_sink_impl {
     file _file;
     file_output_stream_options _options;
+    io_priority_class _pc;
     uint64_t _pos = 0;
     semaphore _write_behind_sem = { _options.write_behind };
     future<> _background_writes_done = make_ready_future<>();
     bool _failed = false;
 public:
-    file_data_sink_impl(file f, file_output_stream_options options)
-            : _file(std::move(f)), _options(options) {
+    file_data_sink_impl(file f, file_output_stream_options options, io_priority_class pc)
+            : _file(std::move(f)), _options(options), _pc(pc) {
         _options.buffer_size = select_buffer_size<unsigned>(_options.buffer_size, _file.disk_write_max_length());
         _write_behind_sem.ensure_space_for_waiters(1); // So that wait() doesn't throw
     }
@@ -428,7 +435,7 @@ private:
             truncate = true;
         }
 
-        return _file.dma_write(pos, p, buf_size, _options.io_priority_class).then(
+        return _file.dma_write(pos, p, buf_size, _pc).then(
                 [this, pos, buf = std::move(buf), truncate, buf_size] (size_t size) mutable {
             // short write handling
             if (size < buf_size) {
@@ -475,7 +482,8 @@ public:
 SEASTAR_INCLUDE_API_V2 namespace api_v2 {
 
 data_sink make_file_data_sink(file f, file_output_stream_options options) {
-    return data_sink(std::make_unique<file_data_sink_impl>(std::move(f), options));
+    io_priority_class pclass = get_pclass_from_options(options);
+    return data_sink(std::make_unique<file_data_sink_impl>(std::move(f), options, pclass));
 }
 
 output_stream<char> make_file_output_stream(file f, size_t buffer_size) {
@@ -503,7 +511,8 @@ inline namespace and_newer {
 
 future<data_sink> make_file_data_sink(file f, file_output_stream_options options) noexcept {
     try {
-        return make_ready_future<data_sink>(std::make_unique<file_data_sink_impl>(f, options));
+        io_priority_class pclass = get_pclass_from_options(options);
+        return make_ready_future<data_sink>(std::make_unique<file_data_sink_impl>(f, options, pclass));
     } catch (...) {
         return f.close().then_wrapped([ex = std::current_exception(), f] (future<> fut) mutable {
             if (fut.failed()) {

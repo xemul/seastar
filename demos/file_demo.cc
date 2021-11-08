@@ -120,7 +120,9 @@ future<> demo_with_file_close_on_failure() {
         // when the stream is closed.
         auto make_output_stream = [] (const sstring filename) {
             return with_file_close_on_failure(open_file_dma(std::move(filename), open_flags::rw | open_flags::create), [] (file f) {
-                return make_file_output_stream(std::move(f), aligned_size);
+                file_output_stream_options opts;
+                opts.buffer_size = aligned_size;
+                return make_file_output_stream(std::move(f), std::move(opts));
             });
         };
 

@@ -337,6 +337,9 @@ io_priority_class get_pclass_from_options(const Options& opt) noexcept {
     return opt.io_priority_class;
 }
 
+SEASTAR_INCLUDE_API_V3 namespace api_v3 {
+inline namespace and_newer {
+
 input_stream<char> make_file_input_stream(
         file f, uint64_t offset, uint64_t len, file_input_stream_options options) {
     io_priority_class pclass = get_pclass_from_options(options);
@@ -351,6 +354,9 @@ input_stream<char> make_file_input_stream(
 input_stream<char> make_file_input_stream(
         file f, file_input_stream_options options) {
     return make_file_input_stream(std::move(f), 0, std::move(options));
+}
+
+}
 }
 
 

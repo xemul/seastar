@@ -58,6 +58,9 @@ struct file_input_stream_options {
     lw_shared_ptr<file_input_stream_history> dynamic_adjustments = { }; ///< Input stream history, if null dynamic adjustments are disabled
 };
 
+SEASTAR_INCLUDE_API_V3 namespace api_v3 {
+inline namespace and_newer {
+
 /// \brief Creates an input_stream to read a portion of a file.
 ///
 /// \param file File to read; multiple streams for the same file may coexist
@@ -81,6 +84,9 @@ input_stream<char> make_file_input_stream(
 // multiple input streams concurrently for the same file.
 input_stream<char> make_file_input_stream(
         file file, file_input_stream_options = {});
+
+}
+}
 
 struct file_output_stream_options {
     // For small files, setting preallocation_size can make it impossible for XFS to find

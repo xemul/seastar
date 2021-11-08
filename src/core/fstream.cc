@@ -348,12 +348,12 @@ input_stream<char> make_file_input_stream(
 
 input_stream<char> make_file_input_stream(
         file f, uint64_t offset, file_input_stream_options options) {
-    return make_file_input_stream(std::move(f), offset, std::numeric_limits<uint64_t>::max(), std::move(options));
+    return api_v3::make_file_input_stream(std::move(f), offset, std::numeric_limits<uint64_t>::max(), std::move(options));
 }
 
 input_stream<char> make_file_input_stream(
         file f, file_input_stream_options options) {
-    return make_file_input_stream(std::move(f), 0, std::move(options));
+    return api_v3::make_file_input_stream(std::move(f), 0, std::move(options));
 }
 
 }
@@ -537,11 +537,11 @@ future<data_sink> make_file_data_sink(file f, file_output_stream_options options
 future<output_stream<char>> make_file_output_stream(file f, size_t buffer_size) noexcept {
     file_output_stream_options options;
     options.buffer_size = buffer_size;
-    return api_v3::and_newer::make_file_output_stream(std::move(f), options);
+    return api_v3::make_file_output_stream(std::move(f), options);
 }
 
 future<output_stream<char>> make_file_output_stream(file f, file_output_stream_options options) noexcept {
-    return api_v3::and_newer::make_file_data_sink(std::move(f), options).then([] (data_sink&& ds) {
+    return api_v3::make_file_data_sink(std::move(f), options).then([] (data_sink&& ds) {
         return output_stream<char>(std::move(ds));
     });
 }

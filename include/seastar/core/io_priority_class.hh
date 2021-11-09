@@ -88,4 +88,10 @@ private:
 
 const io_priority_class& default_priority_class();
 
+#ifndef SEASTAR_EXPLICIT_IO_CLASSES
+#define IMPLICIT_PRIORITY_CLASS = default_priority_class()
+#else
+#define IMPLICIT_PRIORITY_CLASS
+#endif
+
 } // namespace seastar

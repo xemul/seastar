@@ -122,19 +122,19 @@ inline namespace and_newer {
 ///
 /// \note Multiple input streams may exist concurrently for the same file.
 input_stream<char> make_file_input_stream(
-        file file, uint64_t offset, uint64_t len, io_priority_class pc = default_priority_class(), file_input_stream_options options = {});
+        file file, uint64_t offset, uint64_t len, io_priority_class pc IMPLICIT_PRIORITY_CLASS, file_input_stream_options options = {});
 
 // Create an input_stream for a given file, with the specified options.
 // Multiple fibers of execution (continuations) may safely open
 // multiple input streams concurrently for the same file.
 input_stream<char> make_file_input_stream(
-        file file, uint64_t offset, io_priority_class pc = default_priority_class(), file_input_stream_options = {});
+        file file, uint64_t offset, io_priority_class pc IMPLICIT_PRIORITY_CLASS, file_input_stream_options = {});
 
 // Create an input_stream for reading starting at a given position of the
 // given file. Multiple fibers of execution (continuations) may safely open
 // multiple input streams concurrently for the same file.
 input_stream<char> make_file_input_stream(
-        file file, io_priority_class pc = default_priority_class(), file_input_stream_options = {});
+        file file, io_priority_class pc IMPLICIT_PRIORITY_CLASS, file_input_stream_options = {});
 
 }
 }
@@ -225,14 +225,14 @@ inline namespace and_newer {
 /// Closes the file if the stream creation fails.
 future<output_stream<char>> make_file_output_stream(
         file file,
-        io_priority_class pc = default_priority_class(),
+        io_priority_class pc IMPLICIT_PRIORITY_CLASS,
         file_output_stream_options options = {}) noexcept;
 
 /// Create a data_sink for writing starting at the position zero of a
 /// newly created file.
 /// Closes the file if the sink creation fails.
 future<data_sink> make_file_data_sink(file,
-        io_priority_class pc = default_priority_class(),
+        io_priority_class pc IMPLICIT_PRIORITY_CLASS,
         file_output_stream_options = {}) noexcept;
 
 }

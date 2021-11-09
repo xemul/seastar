@@ -271,7 +271,7 @@ public:
      */
     template <typename CharType>
     future<size_t>
-    dma_read(uint64_t aligned_pos, CharType* aligned_buffer, size_t aligned_len, const io_priority_class& pc = default_priority_class(), io_intent* intent = nullptr) noexcept {
+    dma_read(uint64_t aligned_pos, CharType* aligned_buffer, size_t aligned_len, const io_priority_class& pc IMPLICIT_PRIORITY_CLASS, io_intent* intent = nullptr) noexcept {
         return dma_read_impl(aligned_pos, reinterpret_cast<uint8_t*>(aligned_buffer), aligned_len, pc, intent);
     }
 
@@ -292,7 +292,7 @@ public:
      *       reached or in case of I/O error.
      */
     template <typename CharType>
-    future<temporary_buffer<CharType>> dma_read(uint64_t pos, size_t len, const io_priority_class& pc = default_priority_class(), io_intent* intent = nullptr) noexcept {
+    future<temporary_buffer<CharType>> dma_read(uint64_t pos, size_t len, const io_priority_class& pc IMPLICIT_PRIORITY_CLASS, io_intent* intent = nullptr) noexcept {
         return dma_read_impl(pos, len, pc, intent).then([] (temporary_buffer<uint8_t> t) {
             return temporary_buffer<CharType>(reinterpret_cast<CharType*>(t.get_write()), t.size(), t.release());
         });
@@ -317,7 +317,7 @@ public:
      */
     template <typename CharType>
     future<temporary_buffer<CharType>>
-    dma_read_exactly(uint64_t pos, size_t len, const io_priority_class& pc = default_priority_class(), io_intent* intent = nullptr) noexcept {
+    dma_read_exactly(uint64_t pos, size_t len, const io_priority_class& pc IMPLICIT_PRIORITY_CLASS, io_intent* intent = nullptr) noexcept {
         return dma_read_exactly_impl(pos, len, pc, intent).then([] (temporary_buffer<uint8_t> t) {
             return temporary_buffer<CharType>(reinterpret_cast<CharType*>(t.get_write()), t.size(), t.release());
         });
@@ -333,7 +333,7 @@ public:
     ///
     /// \return a future representing the number of bytes actually read.  A short
     ///         read may happen due to end-of-file or an I/O error.
-    future<size_t> dma_read(uint64_t pos, std::vector<iovec> iov, const io_priority_class& pc = default_priority_class(), io_intent* intent = nullptr) noexcept;
+    future<size_t> dma_read(uint64_t pos, std::vector<iovec> iov, const io_priority_class& pc IMPLICIT_PRIORITY_CLASS, io_intent* intent = nullptr) noexcept;
 
     /// Performs a DMA write from the specified buffer.
     ///
@@ -347,7 +347,7 @@ public:
     /// \return a future representing the number of bytes actually written.  A short
     ///         write may happen due to an I/O error.
     template <typename CharType>
-    future<size_t> dma_write(uint64_t pos, const CharType* buffer, size_t len, const io_priority_class& pc = default_priority_class(), io_intent* intent = nullptr) noexcept {
+    future<size_t> dma_write(uint64_t pos, const CharType* buffer, size_t len, const io_priority_class& pc IMPLICIT_PRIORITY_CLASS, io_intent* intent = nullptr) noexcept {
         return dma_write_impl(pos, reinterpret_cast<const uint8_t*>(buffer), len, pc, intent);
     }
 
@@ -361,7 +361,7 @@ public:
     ///
     /// \return a future representing the number of bytes actually written.  A short
     ///         write may happen due to an I/O error.
-    future<size_t> dma_write(uint64_t pos, std::vector<iovec> iov, const io_priority_class& pc = default_priority_class(), io_intent* intent = nullptr) noexcept;
+    future<size_t> dma_write(uint64_t pos, std::vector<iovec> iov, const io_priority_class& pc IMPLICIT_PRIORITY_CLASS, io_intent* intent = nullptr) noexcept;
 
     /// Causes any previously written data to be made stable on persistent storage.
     ///
@@ -539,7 +539,7 @@ public:
      */
     template <typename CharType>
     future<temporary_buffer<CharType>>
-    dma_read_bulk(uint64_t offset, size_t range_size, const io_priority_class& pc = default_priority_class(), io_intent* intent = nullptr) noexcept {
+    dma_read_bulk(uint64_t offset, size_t range_size, const io_priority_class& pc IMPLICIT_PRIORITY_CLASS, io_intent* intent = nullptr) noexcept {
         return dma_read_bulk_impl(offset, range_size, pc, intent).then([] (temporary_buffer<uint8_t> t) {
             return temporary_buffer<CharType>(reinterpret_cast<CharType*>(t.get_write()), t.size(), t.release());
         });

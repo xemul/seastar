@@ -72,18 +72,21 @@ inline namespace and_newer_up_to_v6 {
 /// \param options A set of options controlling the stream.
 ///
 /// \note Multiple input streams may exist concurrently for the same file.
+[[deprecated("use Seastar_API_LEVEL=7 instead")]]
 input_stream<char> make_file_input_stream(
         file file, uint64_t offset, uint64_t len, file_input_stream_options options = {});
 
 // Create an input_stream for a given file, with the specified options.
 // Multiple fibers of execution (continuations) may safely open
 // multiple input streams concurrently for the same file.
+[[deprecated("use Seastar_API_LEVEL=7 instead")]]
 input_stream<char> make_file_input_stream(
         file file, uint64_t offset, file_input_stream_options = {});
 
 // Create an input_stream for reading starting at a given position of the
 // given file. Multiple fibers of execution (continuations) may safely open
 // multiple input streams concurrently for the same file.
+[[deprecated("use Seastar_API_LEVEL=7 instead")]]
 input_stream<char> make_file_input_stream(
         file file, file_input_stream_options = {});
 
@@ -175,6 +178,7 @@ inline namespace and_newer_up_to_v6 {
 /// newly created file.
 /// NOTE: flush() should be the last thing to be called on a file output stream.
 /// Closes the file if the stream creation fails.
+[[deprecated("use Seastar_API_LEVEL=7 instead")]]
 future<output_stream<char>> make_file_output_stream(
         file file,
         uint64_t buffer_size = 8192) noexcept;
@@ -183,6 +187,7 @@ future<output_stream<char>> make_file_output_stream(
 /// newly created file.
 /// NOTE: flush() should be the last thing to be called on a file output stream.
 /// Closes the file if the stream creation fails.
+[[deprecated("use Seastar_API_LEVEL=7 instead")]]
 future<output_stream<char>> make_file_output_stream(
         file file,
         file_output_stream_options options) noexcept;
@@ -190,6 +195,7 @@ future<output_stream<char>> make_file_output_stream(
 /// Create a data_sink for writing starting at the position zero of a
 /// newly created file.
 /// Closes the file if the sink creation fails.
+[[deprecated("use Seastar_API_LEVEL=7 instead")]]
 future<data_sink> make_file_data_sink(file, file_output_stream_options) noexcept;
 
 }

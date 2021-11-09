@@ -345,6 +345,9 @@ io_priority_class get_pclass_from_options(const Options& opt) noexcept {
 SEASTAR_INCLUDE_API_V3 namespace api_v3 {
 inline namespace and_newer_up_to_v6 {
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 input_stream<char> make_file_input_stream(
         file f, uint64_t offset, uint64_t len, file_input_stream_options options) {
     io_priority_class pclass = get_pclass_from_options(options);
@@ -360,6 +363,8 @@ input_stream<char> make_file_input_stream(
         file f, file_input_stream_options options) {
     return api_v3::make_file_input_stream(std::move(f), 0, std::move(options));
 }
+
+#pragma GCC diagnostic pop
 
 }
 }
@@ -540,6 +545,9 @@ output_stream<char> make_file_output_stream(file f, file_output_stream_options o
 SEASTAR_INCLUDE_API_V3 namespace api_v3 {
 inline namespace and_newer_up_to_v6 {
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 future<data_sink> make_file_data_sink(file f, file_output_stream_options options) noexcept {
     try {
         io_priority_class pclass = get_pclass_from_options(options);
@@ -570,6 +578,8 @@ future<output_stream<char>> make_file_output_stream(file f, file_output_stream_o
         return output_stream<char>(std::move(ds));
     });
 }
+
+#pragma GCC diagnostic pop
 
 }
 }

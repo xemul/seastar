@@ -90,6 +90,15 @@ input_stream<char> make_file_input_stream(
 input_stream<char> make_file_input_stream(
         file file, file_input_stream_options = {});
 
+#if SEASTAR_API_LEVEL < 7
+[[deprecated("use Seastar_API_LEVEL=7 instead")]]
+inline input_stream<char> make_file_input_stream(file f, io_priority_class pc) {
+    file_input_stream_options opts;
+    opts.io_priority_class = pc;
+    return make_file_input_stream(std::move(f), std::move(opts));
+}
+#endif
+
 }
 
 inline namespace and_newer {

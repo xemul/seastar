@@ -91,7 +91,7 @@ future<std::unique_ptr<reply>> file_interaction_handler::read(
         return do_with(output_stream<char>(get_stream(std::move(req), extension, std::move(s))),
                 [file_name] (output_stream<char>& os) {
             return open_file_dma(file_name, open_flags::ro).then([&os] (file f) {
-                return do_with(input_stream<char>(make_file_input_stream(std::move(f))), [&os](input_stream<char>& is) {
+                return do_with(input_stream<char>(make_file_input_stream(std::move(f), default_priority_class())), [&os](input_stream<char>& is) {
                     return copy(is, os).then([&os] {
                         return os.close();
                     }).then([&is] {

@@ -40,7 +40,7 @@ const sstring api_registry_builder_base::DEFAULT_DIR = ".";
 doc_entry get_file_reader(sstring file_name) {
     return [file_name] (output_stream<char>& os) {
         return open_file_dma(file_name, open_flags::ro).then([&os] (file f) mutable {
-            return do_with(input_stream<char>(make_file_input_stream(std::move(f))), [&os](input_stream<char>& is) {
+            return do_with(input_stream<char>(make_file_input_stream(std::move(f), default_priority_class())), [&os](input_stream<char>& is) {
                 return copy(is, os).then([&is] {
                     return is.close();
                 });

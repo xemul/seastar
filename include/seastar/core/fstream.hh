@@ -54,12 +54,14 @@ class file_input_stream_history {
 struct file_input_stream_options {
     size_t buffer_size = 8192;    ///< I/O buffer size
     unsigned read_ahead = 0;      ///< Maximum number of extra read-ahead operations
+#if SEASTAR_API_LEVEL < 7
     ::seastar::io_priority_class io_priority_class = default_priority_class();
+#endif
     lw_shared_ptr<file_input_stream_history> dynamic_adjustments = { }; ///< Input stream history, if null dynamic adjustments are disabled
 };
 
 SEASTAR_INCLUDE_API_V3 namespace api_v3 {
-inline namespace and_newer {
+inline namespace and_newer_up_to_v6 {
 
 /// \brief Creates an input_stream to read a portion of a file.
 ///
@@ -86,6 +88,43 @@ input_stream<char> make_file_input_stream(
         file file, file_input_stream_options = {});
 
 }
+
+inline namespace and_newer {
+#if SEASTAR_API_LEVEL < 7
+    using namespace and_newer_up_to_v6;
+#endif
+}
+}
+
+SEASTAR_INCLUDE_API_V7 namespace api_v7 {
+inline namespace and_newer {
+
+/// \brief Creates an input_stream to read a portion of a file.
+///
+/// \param file File to read; multiple streams for the same file may coexist
+/// \param offset Starting offset to read from (no alignment restrictions)
+/// \param len Maximum number of bytes to read; the stream will stop at end-of-file
+///            even if `offset + len` is beyond end-of-file.
+/// \param pc  Priority class to use
+/// \param options A set of options controlling the stream.
+///
+/// \note Multiple input streams may exist concurrently for the same file.
+input_stream<char> make_file_input_stream(
+        file file, uint64_t offset, uint64_t len, io_priority_class pc = default_priority_class(), file_input_stream_options options = {});
+
+// Create an input_stream for a given file, with the specified options.
+// Multiple fibers of execution (continuations) may safely open
+// multiple input streams concurrently for the same file.
+input_stream<char> make_file_input_stream(
+        file file, uint64_t offset, io_priority_class pc = default_priority_class(), file_input_stream_options = {});
+
+// Create an input_stream for reading starting at a given position of the
+// given file. Multiple fibers of execution (continuations) may safely open
+// multiple input streams concurrently for the same file.
+input_stream<char> make_file_input_stream(
+        file file, io_priority_class pc = default_priority_class(), file_input_stream_options = {});
+
+}
 }
 
 struct file_output_stream_options {
@@ -99,7 +138,9 @@ struct file_output_stream_options {
     unsigned buffer_size = 65536;
     unsigned preallocation_size = 0; ///< Preallocate extents. For large files, set to a large number (a few megabytes) to reduce fragmentation
     unsigned write_behind = 1; ///< Number of buffers to write in parallel
+#if SEASTAR_API_LEVEL < 7
     ::seastar::io_priority_class io_priority_class = default_priority_class();
+#endif
 };
 
 SEASTAR_INCLUDE_API_V2 namespace api_v2 {
@@ -128,7 +169,7 @@ data_sink make_file_data_sink(file, file_output_stream_options);
 }
 
 SEASTAR_INCLUDE_API_V3 namespace api_v3 {
-inline namespace and_newer {
+inline namespace and_newer_up_to_v6 {
 
 /// Create an output_stream for writing starting at the position zero of a
 /// newly created file.
@@ -150,6 +191,34 @@ future<output_stream<char>> make_file_output_stream(
 /// newly created file.
 /// Closes the file if the sink creation fails.
 future<data_sink> make_file_data_sink(file, file_output_stream_options) noexcept;
+
+}
+
+inline namespace and_newer {
+#if SEASTAR_API_LEVEL < 7
+    using namespace and_newer_up_to_v6;
+#endif
+}
+}
+
+SEASTAR_INCLUDE_API_V7 namespace api_v7 {
+inline namespace and_newer {
+
+/// Create an output_stream for writing starting at the position zero of a
+/// newly created file.
+/// NOTE: flush() should be the last thing to be called on a file output stream.
+/// Closes the file if the stream creation fails.
+future<output_stream<char>> make_file_output_stream(
+        file file,
+        io_priority_class pc = default_priority_class(),
+        file_output_stream_options options = {}) noexcept;
+
+/// Create a data_sink for writing starting at the position zero of a
+/// newly created file.
+/// Closes the file if the sink creation fails.
+future<data_sink> make_file_data_sink(file,
+        io_priority_class pc = default_priority_class(),
+        file_output_stream_options = {}) noexcept;
 
 }
 }

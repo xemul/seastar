@@ -122,7 +122,7 @@ future<> demo_with_file_close_on_failure() {
             return with_file_close_on_failure(open_file_dma(std::move(filename), open_flags::rw | open_flags::create), [] (file f) {
                 file_output_stream_options opts;
                 opts.buffer_size = aligned_size;
-                return make_file_output_stream(std::move(f), std::move(opts));
+                return make_file_output_stream(std::move(f), default_priority_class(), std::move(opts));
             });
         };
 

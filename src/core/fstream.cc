@@ -334,11 +334,16 @@ public:
 
 template <typename Options>
 io_priority_class get_pclass_from_options(const Options& opt) noexcept {
+#if SEASTAR_API_LEVEL < 7
     return opt.io_priority_class;
+#else
+    assert(false && "Illegal attempt to get priority class from fstream options");
+    return default_priority_class();
+#endif
 }
 
 SEASTAR_INCLUDE_API_V3 namespace api_v3 {
-inline namespace and_newer {
+inline namespace and_newer_up_to_v6 {
 
 input_stream<char> make_file_input_stream(
         file f, uint64_t offset, uint64_t len, file_input_stream_options options) {
@@ -359,6 +364,26 @@ input_stream<char> make_file_input_stream(
 }
 }
 
+SEASTAR_INCLUDE_API_V7 namespace api_v7 {
+inline namespace and_newer {
+
+input_stream<char> make_file_input_stream(
+        file f, uint64_t offset, uint64_t len, io_priority_class pc, file_input_stream_options options) {
+    return input_stream<char>(file_data_source(std::move(f), offset, len, std::move(options), pc));
+}
+
+input_stream<char> make_file_input_stream(
+        file f, uint64_t offset, io_priority_class pc, file_input_stream_options options) {
+    return api_v7::make_file_input_stream(std::move(f), offset, std::numeric_limits<uint64_t>::max(), pc, std::move(options));
+}
+
+input_stream<char> make_file_input_stream(
+        file f, io_priority_class pc, file_input_stream_options options) {
+    return api_v7::make_file_input_stream(std::move(f), 0, pc, std::move(options));
+}
+
+}
+}
 
 class file_data_sink_impl : public data_sink_impl {
     file _file;
@@ -513,7 +538,7 @@ output_stream<char> make_file_output_stream(file f, file_output_stream_options o
 }
 
 SEASTAR_INCLUDE_API_V3 namespace api_v3 {
-inline namespace and_newer {
+inline namespace and_newer_up_to_v6 {
 
 future<data_sink> make_file_data_sink(file f, file_output_stream_options options) noexcept {
     try {
@@ -544,6 +569,45 @@ future<output_stream<char>> make_file_output_stream(file f, file_output_stream_o
     return api_v3::make_file_data_sink(std::move(f), options).then([] (data_sink&& ds) {
         return output_stream<char>(std::move(ds));
     });
+}
+
+}
+}
+
+SEASTAR_INCLUDE_API_V7 namespace api_v7 {
+inline namespace and_newer {
+
+/// Create an output_stream for writing starting at the position zero of a
+/// newly created file.
+/// NOTE: flush() should be the last thing to be called on a file output stream.
+/// Closes the file if the stream creation fails.
+future<output_stream<char>> make_file_output_stream(file f, io_priority_class pc,
+        file_output_stream_options options) noexcept {
+    return api_v7::make_file_data_sink(std::move(f), pc, options).then([] (data_sink&& ds) {
+        return output_stream<char>(std::move(ds));
+    });
+}
+
+/// Create a data_sink for writing starting at the position zero of a
+/// newly created file.
+/// Closes the file if the sink creation fails.
+future<data_sink> make_file_data_sink(file f, io_priority_class pc,
+        file_output_stream_options options) noexcept {
+    try {
+        return make_ready_future<data_sink>(std::make_unique<file_data_sink_impl>(f, std::move(options), pc));
+    } catch (...) {
+        return f.close().then_wrapped([ex = std::current_exception(), f] (future<> fut) mutable {
+            if (fut.failed()) {
+                try {
+                    std::rethrow_exception(std::move(ex));
+                } catch (...) {
+                    std::throw_with_nested(std::runtime_error(fmt::format("While handling failed construction of data_sink, caught exception: {}",
+                                fut.get_exception())));
+                }
+            }
+            return make_exception_future<data_sink>(std::move(ex));
+        });
+    }
 }
 
 }

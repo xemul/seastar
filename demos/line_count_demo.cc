@@ -35,7 +35,7 @@ using namespace seastar;
 struct reader {
 public:
     reader(file f)
-            : is(make_file_input_stream(std::move(f), file_input_stream_options{1 << 16, 1})) {
+            : is(make_file_input_stream(std::move(f), default_priority_class(), file_input_stream_options{1 << 16, 1})) {
     }
 
     input_stream<char> is;

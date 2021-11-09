@@ -56,7 +56,7 @@ struct writer {
 struct reader {
     input_stream<char> in;
     reader(file f) : in(make_file_input_stream(std::move(f))) {}
-    reader(file f, file_input_stream_options options) : in(make_file_input_stream(std::move(f), std::move(options))) {}
+    reader(file f, file_input_stream_options options) : in(make_file_input_stream(std::move(f), default_priority_class(), std::move(options))) {}
 };
 
 SEASTAR_TEST_CASE(test_fstream) {
@@ -323,7 +323,7 @@ SEASTAR_TEST_CASE(test_input_stream_esp_around_eof) {
             auto start = r.start;
             auto end = r.end;
             auto len = end - start;
-            auto in = make_file_input_stream(f, start, len, opt);
+            auto in = make_file_input_stream(f, start, len, default_priority_class(), opt);
             std::vector<uint8_t> readback;
             auto more = true;
             while (more) {
@@ -522,7 +522,7 @@ SEASTAR_TEST_CASE(test_fstream_slow_start) {
                     s.close().get();
                 }
             };
-            return fstream_wrapper(make_file_input_stream(file(mock_file), 0, file_size, options));
+            return fstream_wrapper(make_file_input_stream(file(mock_file), 0, file_size, default_priority_class(), options));
         };
 
         BOOST_TEST_MESSAGE("Reading file, no history, expectiong a slow start");

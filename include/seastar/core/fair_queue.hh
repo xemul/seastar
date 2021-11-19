@@ -164,7 +164,7 @@ public:
 /// @{
 
 class fair_queue_entry : public bi::slist_base_hook<> {
-    friend class fair_queue;
+    template <typename T> friend class fair_queue_impl;
 
     fair_queue_ticket _ticket;
 
@@ -186,7 +186,8 @@ public:
 /// dispatch them efficiently. The inability can be of two kinds -- either disk cannot
 /// cope with the number of arriving requests, or the total size of the data withing
 /// the given time frame exceeds the disk throughput.
-class fair_group {
+template <typename Entry>
+class fair_group_impl {
     using fair_group_atomic_rover = std::atomic<fair_group_rover>;
     static_assert(fair_group_atomic_rover::is_always_lock_free);
 
@@ -207,8 +208,8 @@ public:
         config(unsigned max_requests, unsigned max_bytes) noexcept
                 : max_req_count(max_requests), max_bytes_count(max_bytes) {}
     };
-    explicit fair_group(config cfg) noexcept;
-    fair_group(fair_group&&) = delete;
+    explicit fair_group_impl(config cfg) noexcept;
+    fair_group_impl(fair_group_impl&&) = delete;
 
     fair_queue_ticket maximum_capacity() const noexcept { return _maximum_capacity; }
     fair_group_rover grab_capacity(fair_queue_ticket cap) noexcept;
@@ -238,7 +239,8 @@ public:
 /// When the classes that lag behind start seeing requests, the fair queue will serve
 /// them first, until balance is restored. This balancing is expected to happen within
 /// a certain time window that obeys an exponential decay.
-class fair_queue {
+template <typename Entry>
+class fair_queue_impl {
 public:
     /// \brief Fair Queue configuration structure.
     ///
@@ -261,7 +263,7 @@ private:
     };
 
     config _config;
-    fair_group& _group;
+    fair_group_impl<Entry>& _group;
     using clock_type = std::chrono::steady_clock::time_point;
     clock_type _base;
     using prioq = std::priority_queue<priority_class_ptr, std::vector<priority_class_ptr>, class_compare>;
@@ -304,9 +306,9 @@ public:
     /// Constructs a fair queue with configuration parameters \c cfg.
     ///
     /// \param cfg an instance of the class \ref config
-    explicit fair_queue(fair_group& shared, config cfg);
-    fair_queue(fair_queue&&);
-    ~fair_queue();
+    explicit fair_queue_impl(fair_group_impl<Entry>& shared, config cfg);
+    fair_queue_impl(fair_queue_impl&&);
+    ~fair_queue_impl();
 
     /// Registers a priority class against this fair queue.
     ///

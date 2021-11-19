@@ -32,6 +32,7 @@
 #include <seastar/core/print.hh>
 #include <boost/range/irange.hpp>
 #include <chrono>
+#include "../../src/core/fair_queue-impl.hh"
 
 using namespace seastar;
 using namespace std::chrono_literals;
@@ -53,6 +54,9 @@ struct request {
         delete this;
     }
 };
+
+using fair_queue = fair_queue_impl<request>;
+using fair_group = fair_group_impl<request>;
 
 class test_env {
     fair_group _fg;

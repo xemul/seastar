@@ -28,6 +28,7 @@
 #include <seastar/core/loop.hh>
 #include <seastar/core/when_all.hh>
 #include <boost/range/irange.hpp>
+#include "../../src/core/fair_queue-impl.hh"
 
 struct local_fq_entry {
     fair_queue_entry ent;
@@ -38,6 +39,9 @@ struct local_fq_entry {
         : ent(fair_queue_ticket(weight, index))
         , submit(std::move(f)) {}
 };
+
+using fair_queue = fair_queue_impl<local_fq_entry>;
+using fair_group = fair_group_impl<local_fq_entry>;
 
 static constexpr fair_queue::class_id cid = 0;
 

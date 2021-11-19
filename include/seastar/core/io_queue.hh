@@ -92,6 +92,8 @@ public:
     class priority_class_data;
 
 private:
+    using fair_queue = fair_queue_impl<queued_io_request>;
+
     std::vector<std::unique_ptr<priority_class_data>> _priority_classes;
     io_group_ptr _group;
     boost::container::small_vector<fair_queue, 2> _streams;
@@ -191,6 +193,8 @@ public:
     explicit io_group(io_queue::config io_cfg) noexcept;
 
 private:
+    using fair_group = fair_group_impl<queued_io_request>;
+
     friend class io_queue;
     const io_queue::config _config;
     std::vector<std::unique_ptr<fair_group>> _fgs;

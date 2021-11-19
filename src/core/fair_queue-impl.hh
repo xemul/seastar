@@ -39,7 +39,8 @@ namespace seastar {
 static_assert(sizeof(fair_queue_ticket) == sizeof(uint64_t), "unexpected fair_queue_ticket size");
 static_assert(sizeof(fair_queue_entry) <= 3 * sizeof(void*), "unexpected fair_queue_entry::_hook size");
 
-fair_group::fair_group(config cfg) noexcept
+template <typename T>
+fair_group_impl<T>::fair_group_impl(config cfg) noexcept
         : _capacity_tail(fair_group_rover(0, 0))
         , _capacity_head(fair_group_rover(cfg.max_req_count, cfg.max_bytes_count))
         , _maximum_capacity(cfg.max_req_count, cfg.max_bytes_count)
@@ -49,21 +50,24 @@ fair_group::fair_group(config cfg) noexcept
     seastar_logger.debug("Created fair group, capacity {}:{}", cfg.max_req_count, cfg.max_bytes_count);
 }
 
-fair_group_rover fair_group::grab_capacity(fair_queue_ticket cap) noexcept {
+template <typename T>
+fair_group_rover fair_group_impl<T>::grab_capacity(fair_queue_ticket cap) noexcept {
     fair_group_rover cur = _capacity_tail.load(std::memory_order_relaxed);
     while (!_capacity_tail.compare_exchange_weak(cur, cur + cap)) ;
     return cur;
 }
 
-void fair_group::release_capacity(fair_queue_ticket cap) noexcept {
+template <typename T>
+void fair_group_impl<T>::release_capacity(fair_queue_ticket cap) noexcept {
     fair_group_rover cur = _capacity_head.load(std::memory_order_relaxed);
     while (!_capacity_head.compare_exchange_weak(cur, cur + cap)) ;
 }
 
 // Priority class, to be used with a given fair_queue
-class fair_queue::priority_class_data {
+template <typename T>
+class fair_queue_impl<T>::priority_class_data {
     using accumulator_t = double;
-    friend class fair_queue;
+    friend class fair_queue_impl;
     uint32_t _shares = 0;
     accumulator_t _accumulated = 0;
     bi::slist<fair_queue_entry, bi::constant_time_size<false>, bi::cache_last<true>> _queue;
@@ -77,11 +81,13 @@ public:
     }
 };
 
-bool fair_queue::class_compare::operator() (const priority_class_ptr& lhs, const priority_class_ptr & rhs) const noexcept {
+template <typename T>
+bool fair_queue_impl<T>::class_compare::operator() (const priority_class_ptr& lhs, const priority_class_ptr & rhs) const noexcept {
     return lhs->_accumulated > rhs->_accumulated;
 }
 
-fair_queue::fair_queue(fair_group& group, config cfg)
+template <typename T>
+fair_queue_impl<T>::fair_queue_impl(fair_group_impl<T>& group, config cfg)
     : _config(std::move(cfg))
     , _group(group)
     , _base(std::chrono::steady_clock::now())
@@ -89,7 +95,8 @@ fair_queue::fair_queue(fair_group& group, config cfg)
     seastar_logger.debug("Created fair queue, ticket pace {}:{}", cfg.ticket_weight_pace, cfg.ticket_size_pace);
 }
 
-fair_queue::fair_queue(fair_queue&& other)
+template <typename T>
+fair_queue_impl<T>::fair_queue_impl(fair_queue_impl&& other)
     : _config(std::move(other._config))
     , _group(other._group)
     , _base(other._base)
@@ -98,35 +105,40 @@ fair_queue::fair_queue(fair_queue&& other)
 {
 }
 
-fair_queue::~fair_queue() {
+template <typename T>
+fair_queue_impl<T>::~fair_queue_impl() {
     for (const auto& fq : _priority_classes) {
         assert(!fq);
     }
 }
 
-void fair_queue::push_priority_class(priority_class_data& pc) {
+template <typename T>
+void fair_queue_impl<T>::push_priority_class(priority_class_data& pc) {
     if (!pc._queued) {
         _handles.push(&pc);
         pc._queued = true;
     }
 }
 
-void fair_queue::pop_priority_class(priority_class_data& pc) {
+template <typename T>
+void fair_queue_impl<T>::pop_priority_class(priority_class_data& pc) {
     assert(pc._queued);
     pc._queued = false;
     _handles.pop();
 }
 
-void fair_queue::normalize_stats() {
+template <typename T>
+void fair_queue_impl<T>::normalize_stats() {
     _base = std::chrono::steady_clock::now() - _config.tau;
     for (auto& pc: _priority_classes) {
         if (pc) {
-            pc->_accumulated *= std::numeric_limits<priority_class_data::accumulator_t>::min();
+            pc->_accumulated *= std::numeric_limits<typename priority_class_data::accumulator_t>::min();
         }
     }
 }
 
-bool fair_queue::grab_pending_capacity(fair_queue_ticket cap) noexcept {
+template <typename T>
+bool fair_queue_impl<T>::grab_pending_capacity(fair_queue_ticket cap) noexcept {
     fair_group_rover pending_head = _pending->orig_tail + cap;
     if (pending_head.maybe_ahead_of(_group.head())) {
         return false;
@@ -148,7 +160,8 @@ bool fair_queue::grab_pending_capacity(fair_queue_ticket cap) noexcept {
     return true;
 }
 
-bool fair_queue::grab_capacity(fair_queue_ticket cap) noexcept {
+template <typename T>
+bool fair_queue_impl<T>::grab_capacity(fair_queue_ticket cap) noexcept {
     if (_pending) {
         return grab_pending_capacity(cap);
     }
@@ -162,7 +175,8 @@ bool fair_queue::grab_capacity(fair_queue_ticket cap) noexcept {
     return true;
 }
 
-void fair_queue::register_priority_class(class_id id, uint32_t shares) {
+template <typename T>
+void fair_queue_impl<T>::register_priority_class(class_id id, uint32_t shares) {
     if (id >= _priority_classes.size()) {
         _priority_classes.resize(id + 1);
     } else {
@@ -172,20 +186,23 @@ void fair_queue::register_priority_class(class_id id, uint32_t shares) {
     _priority_classes[id] = std::make_unique<priority_class_data>(shares);
 }
 
-void fair_queue::unregister_priority_class(class_id id) {
+template <typename T>
+void fair_queue_impl<T>::unregister_priority_class(class_id id) {
     auto& pclass = _priority_classes[id];
     assert(pclass && pclass->_queue.empty());
     pclass.reset();
 }
 
-void fair_queue::update_shares_for_class(class_id id, uint32_t shares) {
+template <typename T>
+void fair_queue_impl<T>::update_shares_for_class(class_id id, uint32_t shares) {
     assert(id < _priority_classes.size());
     auto& pc = _priority_classes[id];
     assert(pc);
     pc->update_shares(shares);
 }
 
-void fair_queue::queue(class_id id, fair_queue_entry& ent) {
+template <typename T>
+void fair_queue_impl<T>::queue(class_id id, fair_queue_entry& ent) {
     priority_class_data& pc = *_priority_classes[id];
     // We need to return a future in this function on which the caller can wait.
     // Since we don't know which queue we will use to execute the next request - if ours or
@@ -194,11 +211,13 @@ void fair_queue::queue(class_id id, fair_queue_entry& ent) {
     pc._queue.push_back(ent);
 }
 
-void fair_queue::notify_request_finished(fair_queue_ticket desc) noexcept {
+template <typename T>
+void fair_queue_impl<T>::notify_request_finished(fair_queue_ticket desc) noexcept {
     _group.release_capacity(desc);
 }
 
-void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
+template <typename T>
+void fair_queue_impl<T>::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
     while (!_handles.empty()) {
         priority_class_data& h = *_handles.top();
         if (h._queue.empty()) {
@@ -216,13 +235,13 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
 
         auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
         auto req_cost  = req.ticket().normalize(_group.maximum_capacity()) / h._shares;
-        auto cost  = exp(priority_class_data::accumulator_t(1.0f/_config.tau.count() * delta.count())) * req_cost;
-        priority_class_data::accumulator_t next_accumulated = h._accumulated + cost;
+        auto cost  = exp(typename priority_class_data::accumulator_t(1.0f/_config.tau.count() * delta.count())) * req_cost;
+        typename priority_class_data::accumulator_t next_accumulated = h._accumulated + cost;
         while (std::isinf(next_accumulated)) {
             normalize_stats();
             // If we have renormalized, our time base will have changed. This should happen very infrequently
             delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
-            cost  = exp(priority_class_data::accumulator_t(1.0f/_config.tau.count() * delta.count())) * req_cost;
+            cost  = exp(typename priority_class_data::accumulator_t(1.0f/_config.tau.count() * delta.count())) * req_cost;
             next_accumulated = h._accumulated + cost;
         }
         h._accumulated = next_accumulated;
@@ -235,7 +254,8 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
     }
 }
 
-auto fair_queue::next_pending_aio() const noexcept -> clock_type {
+template <typename T>
+auto fair_queue_impl<T>::next_pending_aio() const noexcept -> clock_type {
     if (_pending) {
         /*
          * We expect the disk to release the ticket within some time,

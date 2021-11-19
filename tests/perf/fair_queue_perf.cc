@@ -32,17 +32,17 @@
 static constexpr fair_queue::class_id cid = 0;
 
 struct local_fq_and_class {
-    seastar::fair_group fg;
-    seastar::fair_queue fq;
-    seastar::fair_queue sfq;
+    fair_group fg;
+    fair_queue fq;
+    fair_queue sfq;
     unsigned executed = 0;
 
-    seastar::fair_queue& queue(bool local) noexcept { return local ? fq : sfq; }
+    fair_queue& queue(bool local) noexcept { return local ? fq : sfq; }
 
-    local_fq_and_class(seastar::fair_group& sfg)
-        : fg(seastar::fair_group::config(1, 1))
-        , fq(fg, seastar::fair_queue::config())
-        , sfq(sfg, seastar::fair_queue::config())
+    local_fq_and_class(fair_group& sfg)
+        : fg(fair_group::config(1, 1))
+        , fq(fg, fair_queue::config())
+        , sfq(sfg, fair_queue::config())
     {
         fq.register_priority_class(cid, 1);
     }
@@ -53,12 +53,12 @@ struct local_fq_and_class {
 };
 
 struct local_fq_entry {
-    seastar::fair_queue_entry ent;
+    fair_queue_entry ent;
     std::function<void()> submit;
 
     template <typename Func>
     local_fq_entry(unsigned weight, unsigned index, Func&& f)
-        : ent(seastar::fair_queue_ticket(weight, index))
+        : ent(fair_queue_ticket(weight, index))
         , submit(std::move(f)) {}
 };
 
@@ -66,12 +66,12 @@ struct perf_fair_queue {
 
     static constexpr unsigned requests_to_dispatch = 1000;
 
-    seastar::sharded<local_fq_and_class> local_fq;
+    sharded<local_fq_and_class> local_fq;
 
-    seastar::fair_group shared_fg;
+    fair_group shared_fg;
 
     perf_fair_queue()
-        : shared_fg(seastar::fair_group::config(smp::count, smp::count))
+        : shared_fg(fair_group::config(smp::count, smp::count))
     {
         local_fq.start(std::ref(shared_fg)).get();
     }
@@ -89,7 +89,7 @@ future<> perf_fair_queue::test(bool loc) {
         return parallel_for_each(boost::irange(0u, requests_to_dispatch), [&local, loc] (unsigned dummy) {
             auto req = std::make_unique<local_fq_entry>(1, 1, [&local, loc] {
                 local.executed++;
-                local.queue(loc).notify_request_finished(seastar::fair_queue_ticket{1, 1});
+                local.queue(loc).notify_request_finished(fair_queue_ticket{1, 1});
             });
             local.queue(loc).queue(cid, req->ent);
             req.release();

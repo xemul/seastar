@@ -38,7 +38,6 @@ namespace seastar {
 
 static_assert(sizeof(fair_queue_ticket) == sizeof(uint64_t), "unexpected fair_queue_ticket size");
 static_assert(sizeof(fair_queue_entry) <= 3 * sizeof(void*), "unexpected fair_queue_entry::_hook size");
-static_assert(sizeof(fair_queue_entry::container_list_t) == 2 * sizeof(void*), "unexpected priority_class::_queue size");
 
 fair_queue_ticket::fair_queue_ticket(uint32_t weight, uint32_t size) noexcept
     : _weight(weight)
@@ -132,7 +131,7 @@ class fair_queue::priority_class_data {
     friend class fair_queue;
     uint32_t _shares = 0;
     accumulator_t _accumulated = 0;
-    fair_queue_entry::container_list_t _queue;
+    bi::slist<fair_queue_entry, bi::constant_time_size<false>, bi::cache_last<true>> _queue;
     bool _queued = false;
 
 public:

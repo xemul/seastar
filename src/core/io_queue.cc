@@ -37,6 +37,7 @@
 #include <array>
 #include <fmt/format.h>
 #include <fmt/ostream.h>
+#include "fair_queue-impl.hh"
 
 namespace seastar {
 

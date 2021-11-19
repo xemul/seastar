@@ -65,7 +65,6 @@
 #include <seastar/core/circular_buffer.hh>
 #include <seastar/core/file.hh>
 #include <seastar/core/semaphore.hh>
-#include <seastar/core/fair_queue.hh>
 #include <seastar/core/scattered_message.hh>
 #include <seastar/core/enum.hh>
 #include <seastar/core/memory.hh>

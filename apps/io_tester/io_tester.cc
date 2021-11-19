@@ -35,6 +35,7 @@
 #include <seastar/core/io_intent.hh>
 #include <chrono>
 #include <vector>
+#include <unordered_set>
 #include <boost/range/irange.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/accumulators/accumulators.hpp>

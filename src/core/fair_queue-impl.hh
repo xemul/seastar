@@ -37,7 +37,6 @@
 namespace seastar {
 
 static_assert(sizeof(fair_queue_ticket) == sizeof(uint64_t), "unexpected fair_queue_ticket size");
-static_assert(sizeof(fair_queue_entry) <= 3 * sizeof(void*), "unexpected fair_queue_entry::_hook size");
 
 template <typename T>
 fair_group_impl<T>::fair_group_impl(config cfg) noexcept
@@ -70,7 +69,7 @@ class fair_queue_impl<T>::priority_class_data {
     friend class fair_queue_impl;
     uint32_t _shares = 0;
     accumulator_t _accumulated = 0;
-    bi::slist<fair_queue_entry, bi::constant_time_size<false>, bi::cache_last<true>> _queue;
+    bi::slist<T, bi::constant_time_size<false>, bi::cache_last<true>> _queue;
     bool _queued = false;
 
 public:
@@ -202,7 +201,7 @@ void fair_queue_impl<T>::update_shares_for_class(class_id id, uint32_t shares) {
 }
 
 template <typename T>
-void fair_queue_impl<T>::queue(class_id id, fair_queue_entry& ent) {
+void fair_queue_impl<T>::queue(class_id id, T& ent) {
     priority_class_data& pc = *_priority_classes[id];
     // We need to return a future in this function on which the caller can wait.
     // Since we don't know which queue we will use to execute the next request - if ours or
@@ -217,7 +216,7 @@ void fair_queue_impl<T>::notify_request_finished(fair_queue_ticket desc) noexcep
 }
 
 template <typename T>
-void fair_queue_impl<T>::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
+void fair_queue_impl<T>::dispatch_requests() {
     while (!_handles.empty()) {
         priority_class_data& h = *_handles.top();
         if (h._queue.empty()) {
@@ -225,7 +224,7 @@ void fair_queue_impl<T>::dispatch_requests(std::function<void(fair_queue_entry&)
             continue;
         }
 
-        auto& req = h._queue.front();
+        T& req = h._queue.front();
         if (!grab_capacity(req.ticket())) {
             break;
         }
@@ -250,7 +249,7 @@ void fair_queue_impl<T>::dispatch_requests(std::function<void(fair_queue_entry&)
             push_priority_class(h);
         }
 
-        cb(req);
+        req.dispatch();
     }
 }
 

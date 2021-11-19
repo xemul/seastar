@@ -60,9 +60,9 @@ class io_group;
 
 using io_group_ptr = std::shared_ptr<io_group>;
 
-class queued_io_request : private internal::io_request {
+class queued_io_request : private internal::io_request, public fair_queue_entry_base {
     io_queue& _ioq;
-    fair_queue_entry _fq_entry;
+    fair_queue_ticket _ticket;
     internal::cancellable_queue::link _intent;
     std::unique_ptr<io_desc_read_write> _desc;
 
@@ -76,11 +76,7 @@ public:
     void cancel() noexcept;
     void set_intent(internal::cancellable_queue* cq) noexcept;
 
-    fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
-
-    static queued_io_request& from_fq_entry(fair_queue_entry& ent) noexcept {
-        return *boost::intrusive::get_parent_from_member(&ent, &queued_io_request::_fq_entry);
-    }
+    fair_queue_ticket ticket() const noexcept { return _ticket; }
 
     static queued_io_request& from_cq_link(internal::cancellable_queue::link& link) noexcept {
         return *boost::intrusive::get_parent_from_member(&link, &queued_io_request::_intent);

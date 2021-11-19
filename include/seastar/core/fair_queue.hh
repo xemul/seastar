@@ -163,18 +163,7 @@ public:
 /// \addtogroup io-module
 /// @{
 
-class fair_queue_entry : public bi::slist_base_hook<> {
-    template <typename T> friend class fair_queue_impl;
-
-    fair_queue_ticket _ticket;
-
-public:
-    fair_queue_entry(fair_queue_ticket t) noexcept
-        : _ticket(std::move(t)) {}
-
-    fair_queue_ticket ticket() const noexcept { return _ticket; }
-    void reset() noexcept { _ticket = {}; }
-};
+using fair_queue_entry_base = bi::slist_base_hook<>;
 
 /// \brief Group of queues class
 ///
@@ -326,14 +315,14 @@ public:
     ///
     /// The user of this interface is supposed to call \ref notify_requests_finished when the
     /// request finishes executing - regardless of success or failure.
-    void queue(class_id c, fair_queue_entry& ent);
+    void queue(class_id c, Entry& ent);
 
     /// Notifies that ont request finished
     /// \param desc an instance of \c fair_queue_ticket structure describing the request that just finished.
     void notify_request_finished(fair_queue_ticket desc) noexcept;
 
     /// Try to execute new requests if there is capacity left in the queue.
-    void dispatch_requests(std::function<void(fair_queue_entry&)> cb);
+    void dispatch_requests();
 
     /// Gets the time at which the pending state is expected to be resolved.
     /// Used by the reactor on interrupt mode enter to find out when the

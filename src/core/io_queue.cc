@@ -196,7 +196,7 @@ public:
 queued_io_request::queued_io_request(internal::io_request req, io_queue& q, std::unique_ptr<io_desc_read_write> desc, fair_queue_ticket ticket)
     : io_request(std::move(req))
     , _ioq(q)
-    , _fq_entry(ticket)
+    , _ticket(ticket)
     , _desc(std::move(desc))
 {
 }
@@ -215,7 +215,7 @@ void queued_io_request::dispatch() noexcept {
 
 void queued_io_request::cancel() noexcept {
     _ioq.cancel_request();
-    _fq_entry.reset();
+    _ticket = {};
     _desc.release()->cancel();
 }
 
@@ -611,7 +611,7 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
             cq = &intent->find_or_create_cancellable_queue(dev_id(), pc.id());
         }
 
-        _streams[stream].queue(pclass.fq_class(), queued_req->queue_entry());
+        _streams[stream].queue(pclass.fq_class(), *queued_req);
         queued_req->set_intent(cq);
         queued_req.release();
         pclass.on_queue();
@@ -622,9 +622,7 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
 
 void io_queue::poll_io_queue() {
     for (auto&& st : _streams) {
-        st.dispatch_requests([] (fair_queue_entry& fqe) {
-            queued_io_request::from_fq_entry(fqe).dispatch();
-        });
+        st.dispatch_requests();
     }
 }
 

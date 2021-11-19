@@ -37,22 +37,25 @@
 using namespace seastar;
 using namespace std::chrono_literals;
 
-struct request {
-    fair_queue_entry fqent;
+struct request : public fair_queue_entry_base {
+    fair_queue_ticket _ticket;
     std::function<void(request& req)> handle;
     unsigned index;
 
     template <typename Func>
     request(unsigned weight, unsigned index, Func&& h)
-        : fqent(fair_queue_ticket(weight, 0))
+        : fair_queue_entry_base()
+        , _ticket(fair_queue_ticket(weight, 0))
         , handle(std::move(h))
         , index(index)
     {}
 
-    void submit() {
+    void dispatch() noexcept {
         handle(*this);
         delete this;
     }
+
+    fair_queue_ticket ticket() const noexcept { return _ticket; }
 };
 
 using fair_queue = fair_queue_impl<request>;
@@ -84,9 +87,7 @@ public:
     // before the queue is destroyed.
     unsigned tick(unsigned n = 1) {
         unsigned processed = 0;
-        _fq.dispatch_requests([] (fair_queue_entry& ent) {
-            boost::intrusive::get_parent_from_member(&ent, &request::fqent)->submit();
-        });
+        _fq.dispatch_requests();
 
         for (unsigned i = 0; i < n; ++i) {
             std::vector<request> curr;
@@ -95,12 +96,10 @@ public:
             for (auto& req : curr) {
                 processed++;
                 _results[req.index]++;
-                _fq.notify_request_finished(req.fqent.ticket());
+                _fq.notify_request_finished(req.ticket());
             }
 
-            _fq.dispatch_requests([] (fair_queue_entry& ent) {
-                boost::intrusive::get_parent_from_member(&ent, &request::fqent)->submit();
-            });
+            _fq.dispatch_requests();
         }
         return processed;
     }
@@ -127,11 +126,11 @@ public:
             } catch (...) {
                 auto eptr = std::current_exception();
                 _exceptions[index].push_back(eptr);
-                _fq.notify_request_finished(req.fqent.ticket());
+                _fq.notify_request_finished(req.ticket());
             }
         });
 
-        _fq.queue(id, req->fqent);
+        _fq.queue(id, *req);
         req.release();
     }
 

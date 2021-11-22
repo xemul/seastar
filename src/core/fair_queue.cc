@@ -158,10 +158,6 @@ fair_queue::fair_queue(fair_group& group, config cfg)
 fair_queue::fair_queue(fair_queue&& other)
     : _config(std::move(other._config))
     , _group(other._group)
-    , _resources_executing(std::exchange(other._resources_executing, fair_queue_ticket{}))
-    , _resources_queued(std::exchange(other._resources_queued, fair_queue_ticket{}))
-    , _requests_executing(std::exchange(other._requests_executing, 0))
-    , _requests_queued(std::exchange(other._requests_queued, 0))
     , _base(other._base)
     , _handles(std::move(other._handles))
     , _priority_classes(std::move(other._priority_classes))
@@ -260,22 +256,6 @@ void fair_queue::update_shares_for_class(class_id id, uint32_t shares) {
     pc->update_shares(shares);
 }
 
-size_t fair_queue::waiters() const {
-    return _requests_queued;
-}
-
-size_t fair_queue::requests_currently_executing() const {
-    return _requests_executing;
-}
-
-fair_queue_ticket fair_queue::resources_currently_waiting() const {
-    return _resources_queued;
-}
-
-fair_queue_ticket fair_queue::resources_currently_executing() const {
-    return _resources_executing;
-}
-
 void fair_queue::queue(class_id id, fair_queue_entry& ent) {
     priority_class_data& pc = *_priority_classes[id];
     // We need to return a future in this function on which the caller can wait.
@@ -283,18 +263,13 @@ void fair_queue::queue(class_id id, fair_queue_entry& ent) {
     // someone else's, we need a separate promise at this point.
     push_priority_class(pc);
     pc._queue.push_back(ent);
-    _resources_queued += ent._ticket;
-    _requests_queued++;
 }
 
 void fair_queue::notify_request_finished(fair_queue_ticket desc) noexcept {
-    _resources_executing -= desc;
-    _requests_executing--;
     _group.release_capacity(desc);
 }
 
 void fair_queue::notify_request_cancelled(fair_queue_entry& ent) noexcept {
-    _resources_queued -= ent._ticket;
     ent._ticket = fair_queue_ticket();
 }
 
@@ -313,11 +288,6 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
 
         pop_priority_class(h);
         h._queue.pop_front();
-
-        _resources_executing += req._ticket;
-        _resources_queued -= req._ticket;
-        _requests_executing++;
-        _requests_queued--;
 
         auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
         auto req_cost  = req._ticket.normalize(_group.maximum_capacity()) / h._shares;

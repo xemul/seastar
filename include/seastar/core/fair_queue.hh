@@ -217,10 +217,6 @@ private:
 
     config _config;
     fair_group& _group;
-    fair_queue_ticket _resources_executing;
-    fair_queue_ticket _resources_queued;
-    unsigned _requests_executing = 0;
-    unsigned _requests_queued = 0;
     using clock_type = std::chrono::steady_clock::time_point;
     clock_type _base;
     using prioq = std::priority_queue<priority_class_ptr, std::vector<priority_class_ptr>, class_compare>;
@@ -278,20 +274,6 @@ public:
     void unregister_priority_class(class_id c);
 
     void update_shares_for_class(class_id c, uint32_t new_shares);
-
-    /// \return how many waiters are currently queued for all classes.
-    [[deprecated("fair_queue users should not track individual requests, but resources (weight, size) passing through the queue")]]
-    size_t waiters() const;
-
-    /// \return the number of requests currently executing
-    [[deprecated("fair_queue users should not track individual requests, but resources (weight, size) passing through the queue")]]
-    size_t requests_currently_executing() const;
-
-    /// \return how much resources (weight, size) are currently queued for all classes.
-    fair_queue_ticket resources_currently_waiting() const;
-
-    /// \return the amount of resources (weight, size) currently executing
-    fair_queue_ticket resources_currently_executing() const;
 
     /// Queue the entry \c ent through this class' \ref fair_queue
     ///

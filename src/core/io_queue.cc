@@ -201,11 +201,11 @@ class queued_io_request : private internal::io_request {
     bool is_cancelled() const noexcept { return !_desc; }
 
 public:
-    queued_io_request(internal::io_request req, io_queue& q, io_queue::priority_class_data& pc, internal::io_direction_and_length dnl)
+    queued_io_request(internal::io_request req, io_queue& q, std::unique_ptr<io_desc_read_write> desc, fair_queue_ticket ticket)
         : io_request(std::move(req))
         , _ioq(q)
-        , _fq_entry(_ioq.request_fq_ticket(dnl))
-        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, dnl, _ioq.request_stream(dnl), _fq_entry.ticket()))
+        , _fq_entry(ticket)
+        , _desc(std::move(desc))
     {
     }
 
@@ -233,9 +233,7 @@ public:
         _intent.enqueue(cq);
     }
 
-    future<size_t> get_future() noexcept { return _desc->get_future(); }
     fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
-    stream_id stream() const noexcept { return _desc->stream(); }
 
     static queued_io_request& from_fq_entry(fair_queue_entry& ent) noexcept {
         return *boost::intrusive::get_parent_from_member(&ent, &queued_io_request::_fq_entry);
@@ -624,14 +622,17 @@ io_queue::queue_request(const io_priority_class& pc, size_t len, internal::io_re
         // that we create the shared pointer in the same shard it will be used at later.
         auto& pclass = find_or_create_class(pc);
         internal::io_direction_and_length dnl(req, len);
-        auto queued_req = std::make_unique<queued_io_request>(std::move(req), *this, pclass, std::move(dnl));
-        auto fut = queued_req->get_future();
+        stream_id stream = request_stream(dnl);
+        fair_queue_ticket ticket = request_fq_ticket(dnl);
+        auto desc = std::make_unique<io_desc_read_write>(*this, pclass, dnl, stream, ticket);
+        auto fut = desc->get_future();
+        auto queued_req = std::make_unique<queued_io_request>(std::move(req), *this, std::move(desc), ticket);
         internal::cancellable_queue* cq = nullptr;
         if (intent != nullptr) {
             cq = &intent->find_or_create_cancellable_queue(dev_id(), pc.id());
         }
 
-        _streams[queued_req->stream()].queue(pclass.fq_class(), queued_req->queue_entry());
+        _streams[stream].queue(pclass.fq_class(), queued_req->queue_entry());
         queued_req->set_intent(cq);
         queued_req.release();
         pclass.on_queue();

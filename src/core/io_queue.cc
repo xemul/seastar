@@ -214,7 +214,6 @@ public:
 
     void dispatch() noexcept {
         if (is_cancelled()) {
-            _ioq.complete_cancelled_request(*this);
             delete this;
             return;
         }
@@ -227,7 +226,8 @@ public:
     }
 
     void cancel() noexcept {
-        _ioq.cancel_request(*this);
+        _ioq.cancel_request();
+        _fq_entry.reset();
         _desc.release()->cancel();
     }
 
@@ -656,13 +656,8 @@ void io_queue::submit_request(io_desc_read_write* desc, internal::io_request req
     _sink.submit(desc, std::move(req));
 }
 
-void io_queue::cancel_request(queued_io_request& req) noexcept {
+void io_queue::cancel_request() noexcept {
     _queued_requests--;
-    _streams[req.stream()].notify_request_cancelled(req.queue_entry());
-}
-
-void io_queue::complete_cancelled_request(queued_io_request& req) noexcept {
-    _streams[req.stream()].notify_request_finished(req.queue_entry().ticket());
 }
 
 io_queue::clock_type::time_point io_queue::next_pending_aio() const noexcept {

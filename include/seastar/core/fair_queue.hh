@@ -129,6 +129,7 @@ public:
             bi::member_hook<fair_queue_entry, bi::slist_member_hook<>, &fair_queue_entry::_hook>>;
 
     fair_queue_ticket ticket() const noexcept { return _ticket; }
+    void reset() noexcept { _ticket = {}; }
 };
 
 /// \brief Group of queues class
@@ -284,7 +285,6 @@ public:
     /// Notifies that ont request finished
     /// \param desc an instance of \c fair_queue_ticket structure describing the request that just finished.
     void notify_request_finished(fair_queue_ticket desc) noexcept;
-    void notify_request_cancelled(fair_queue_entry& ent) noexcept;
 
     /// Try to execute new requests if there is capacity left in the queue.
     void dispatch_requests(std::function<void(fair_queue_entry&)> cb);

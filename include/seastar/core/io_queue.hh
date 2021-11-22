@@ -118,8 +118,7 @@ public:
     future<size_t>
     queue_request(const io_priority_class& pc, size_t len, internal::io_request req, io_intent* intent) noexcept;
     void submit_request(io_desc_read_write* desc, internal::io_request req) noexcept;
-    void cancel_request(queued_io_request& req) noexcept;
-    void complete_cancelled_request(queued_io_request& req) noexcept;
+    void cancel_request() noexcept;
     void complete_request(io_desc_read_write& desc) noexcept;
 
 

@@ -192,57 +192,35 @@ public:
     stream_id stream() const noexcept { return _stream; }
 };
 
-class queued_io_request : private internal::io_request {
-    io_queue& _ioq;
-    fair_queue_entry _fq_entry;
-    internal::cancellable_queue::link _intent;
-    std::unique_ptr<io_desc_read_write> _desc;
+queued_io_request::queued_io_request(internal::io_request req, io_queue& q, std::unique_ptr<io_desc_read_write> desc, fair_queue_ticket ticket)
+    : io_request(std::move(req))
+    , _ioq(q)
+    , _fq_entry(ticket)
+    , _desc(std::move(desc))
+{
+}
 
-    bool is_cancelled() const noexcept { return !_desc; }
-
-public:
-    queued_io_request(internal::io_request req, io_queue& q, std::unique_ptr<io_desc_read_write> desc, fair_queue_ticket ticket)
-        : io_request(std::move(req))
-        , _ioq(q)
-        , _fq_entry(ticket)
-        , _desc(std::move(desc))
-    {
-    }
-
-    queued_io_request(queued_io_request&&) = delete;
-
-    void dispatch() noexcept {
-        if (is_cancelled()) {
-            delete this;
-            return;
-        }
-
-        _intent.maybe_dequeue();
-        _desc->dispatch();
-        _ioq.submit_request(_desc.release(), std::move(*this));
+void queued_io_request::dispatch() noexcept {
+    if (is_cancelled()) {
         delete this;
+        return;
     }
 
-    void cancel() noexcept {
-        _ioq.cancel_request();
-        _fq_entry.reset();
-        _desc.release()->cancel();
-    }
+    _intent.maybe_dequeue();
+    _desc->dispatch();
+    _ioq.submit_request(_desc.release(), std::move(*this));
+    delete this;
+}
 
-    void set_intent(internal::cancellable_queue* cq) noexcept {
-        _intent.enqueue(cq);
-    }
+void queued_io_request::cancel() noexcept {
+    _ioq.cancel_request();
+    _fq_entry.reset();
+    _desc.release()->cancel();
+}
 
-    fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
-
-    static queued_io_request& from_fq_entry(fair_queue_entry& ent) noexcept {
-        return *boost::intrusive::get_parent_from_member(&ent, &queued_io_request::_fq_entry);
-    }
-
-    static queued_io_request& from_cq_link(internal::cancellable_queue::link& link) noexcept {
-        return *boost::intrusive::get_parent_from_member(&link, &queued_io_request::_intent);
-    }
-};
+void queued_io_request::set_intent(internal::cancellable_queue* cq) noexcept {
+    _intent.enqueue(cq);
+}
 
 internal::cancellable_queue::cancellable_queue(cancellable_queue&& o) noexcept
         : _first(std::exchange(o._first, nullptr))

@@ -150,7 +150,9 @@ public:
         , _dnl(dnl)
         , _stream(stream)
         , _fq_ticket(ticket)
-    {}
+    {
+        io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(this), _dnl.length(), _fq_ticket);
+    }
 
     virtual void set_exception(std::exception_ptr eptr) noexcept override {
         io_log.trace("dev {} : req {} error", _ioq.dev_id(), fmt::ptr(this));
@@ -179,6 +181,7 @@ public:
         auto now = io_queue::clock_type::now();
         _pclass.on_dispatch(_dnl, std::chrono::duration_cast<std::chrono::duration<double>>(now - _ts));
         _ts = now;
+        io_log.trace("dev {} : req {} submit", _ioq.dev_id(), fmt::ptr(this));
     }
 
     future<size_t> get_future() {
@@ -206,7 +209,6 @@ public:
         , _fq_entry(_ioq.request_fq_ticket(dnl))
         , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, dnl, _stream, _fq_entry.ticket()))
     {
-        io_log.trace("dev {} : req {} queue  len {} ticket {}", _ioq.dev_id(), fmt::ptr(&*_desc), dnl.length(), _fq_entry.ticket());
     }
 
     queued_io_request(queued_io_request&&) = delete;
@@ -217,7 +219,6 @@ public:
             return;
         }
 
-        io_log.trace("dev {} : req {} submit", _ioq.dev_id(), fmt::ptr(&*_desc));
         _intent.maybe_dequeue();
         _desc->dispatch();
         _ioq.submit_request(_desc.release(), std::move(*this));

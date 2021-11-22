@@ -39,47 +39,6 @@ namespace seastar {
 static_assert(sizeof(fair_queue_ticket) == sizeof(uint64_t), "unexpected fair_queue_ticket size");
 static_assert(sizeof(fair_queue_entry) <= 3 * sizeof(void*), "unexpected fair_queue_entry::_hook size");
 
-fair_queue_ticket::fair_queue_ticket(uint32_t weight, uint32_t size) noexcept
-    : _weight(weight)
-    , _size(size)
-{}
-
-float fair_queue_ticket::normalize(fair_queue_ticket denominator) const noexcept {
-    return float(_weight) / denominator._weight + float(_size) / denominator._size;
-}
-
-fair_queue_ticket fair_queue_ticket::operator+(fair_queue_ticket desc) const noexcept {
-    return fair_queue_ticket(_weight + desc._weight, _size + desc._size);
-}
-
-fair_queue_ticket& fair_queue_ticket::operator+=(fair_queue_ticket desc) noexcept {
-    _weight += desc._weight;
-    _size += desc._size;
-    return *this;
-}
-
-fair_queue_ticket fair_queue_ticket::operator-(fair_queue_ticket desc) const noexcept {
-    return fair_queue_ticket(_weight - desc._weight, _size - desc._size);
-}
-
-fair_queue_ticket& fair_queue_ticket::operator-=(fair_queue_ticket desc) noexcept {
-    _weight -= desc._weight;
-    _size -= desc._size;
-    return *this;
-}
-
-fair_queue_ticket::operator bool() const noexcept {
-    return (_weight > 0) || (_size > 0);
-}
-
-bool fair_queue_ticket::operator==(const fair_queue_ticket& o) const noexcept {
-    return _weight == o._weight && _size == o._size;
-}
-
-std::ostream& operator<<(std::ostream& os, fair_queue_ticket t) {
-    return os << t._weight << ":" << t._size;
-}
-
 fair_group_rover::fair_group_rover(uint32_t weight, uint32_t size) noexcept
         : _weight(weight)
         , _size(size)
@@ -189,11 +148,6 @@ void fair_queue::normalize_stats() {
             pc->_accumulated *= std::numeric_limits<priority_class_data::accumulator_t>::min();
         }
     }
-}
-
-std::chrono::microseconds fair_queue_ticket::duration_at_pace(float weight_pace, float size_pace) const noexcept {
-    unsigned long dur = ((_weight * weight_pace) + (_size * size_pace));
-    return std::chrono::microseconds(dur);
 }
 
 bool fair_queue::grab_pending_capacity(fair_queue_ticket cap) noexcept {

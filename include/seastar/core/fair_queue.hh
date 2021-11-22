@@ -53,29 +53,58 @@ public:
     ///
     /// \param weight the weight of the request
     /// \param size the size of the request
-    fair_queue_ticket(uint32_t weight, uint32_t size) noexcept;
+    fair_queue_ticket(uint32_t weight, uint32_t size) noexcept
+        : _weight(weight)
+        , _size(size)
+    {}
+
     fair_queue_ticket() noexcept {}
-    fair_queue_ticket operator+(fair_queue_ticket desc) const noexcept;
-    fair_queue_ticket operator-(fair_queue_ticket desc) const noexcept;
+    fair_queue_ticket operator+(fair_queue_ticket desc) const noexcept {
+        return fair_queue_ticket(_weight + desc._weight, _size + desc._size);
+    }
+
+    fair_queue_ticket operator-(fair_queue_ticket desc) const noexcept {
+        return fair_queue_ticket(_weight - desc._weight, _size - desc._size);
+    }
+
     /// Increase the quantity represented in this ticket by the amount represented by \c desc
     /// \param desc another \ref fair_queue_ticket whose \c weight \c and size will be added to this one
-    fair_queue_ticket& operator+=(fair_queue_ticket desc) noexcept;
+    fair_queue_ticket& operator+=(fair_queue_ticket desc) noexcept {
+        _weight += desc._weight;
+        _size += desc._size;
+        return *this;
+    }
+
     /// Decreases the quantity represented in this ticket by the amount represented by \c desc
     /// \param desc another \ref fair_queue_ticket whose \c weight \c and size will be decremented from this one
-    fair_queue_ticket& operator-=(fair_queue_ticket desc) noexcept;
+    fair_queue_ticket& operator-=(fair_queue_ticket desc) noexcept {
+        _weight -= desc._weight;
+        _size -= desc._size;
+        return *this;
+    }
+
     /// Checks if the tickets fully equals to another one
     /// \param desc another \ref fair_queue_ticket to compare with
-    bool operator==(const fair_queue_ticket& desc) const noexcept;
+    bool operator==(const fair_queue_ticket& o) const noexcept {
+        return _weight == o._weight && _size == o._size;
+    }
 
-    std::chrono::microseconds duration_at_pace(float weight_pace, float size_pace) const noexcept;
+    std::chrono::microseconds duration_at_pace(float weight_pace, float size_pace) const noexcept {
+        unsigned long dur = ((_weight * weight_pace) + (_size * size_pace));
+        return std::chrono::microseconds(dur);
+    }
 
     /// \returns true if the fair_queue_ticket represents a non-zero quantity.
     ///
     /// For a fair_queue ticket to be non-zero, at least one of its represented quantities need to
     /// be non-zero
-    explicit operator bool() const noexcept;
+    explicit operator bool() const noexcept {
+        return (_weight > 0) || (_size > 0);
+    }
 
-    friend std::ostream& operator<<(std::ostream& os, fair_queue_ticket t);
+    friend std::ostream& operator<<(std::ostream& os, fair_queue_ticket t) {
+        return os << t._weight << ":" << t._size;
+    }
 
     /// \returns the normalized value of this \ref fair_queue_ticket along a base axis
     ///
@@ -90,7 +119,10 @@ public:
     ///
     /// It is however not legal for the axis to have any quantity set to zero.
     /// \param axis another \ref fair_queue_ticket to be used as a a base vector against which to normalize this fair_queue_ticket.
-    float normalize(fair_queue_ticket axis) const noexcept;
+    float normalize(fair_queue_ticket denominator) const noexcept {
+        return float(_weight) / denominator._weight + float(_size) / denominator._size;
+    }
+
 };
 
 class fair_group_rover {

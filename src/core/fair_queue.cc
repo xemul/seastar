@@ -39,30 +39,6 @@ namespace seastar {
 static_assert(sizeof(fair_queue_ticket) == sizeof(uint64_t), "unexpected fair_queue_ticket size");
 static_assert(sizeof(fair_queue_entry) <= 3 * sizeof(void*), "unexpected fair_queue_entry::_hook size");
 
-fair_group_rover::fair_group_rover(uint32_t weight, uint32_t size) noexcept
-        : _weight(weight)
-        , _size(size)
-{}
-
-fair_queue_ticket fair_group_rover::maybe_ahead_of(const fair_group_rover& other) const noexcept {
-    return fair_queue_ticket(std::max<int32_t>(_weight - other._weight, 0),
-            std::max<int32_t>(_size - other._size, 0));
-}
-
-fair_group_rover fair_group_rover::operator+(fair_queue_ticket t) const noexcept {
-    return fair_group_rover(_weight + t._weight, _size + t._size);
-}
-
-fair_group_rover& fair_group_rover::operator+=(fair_queue_ticket t) noexcept {
-    _weight += t._weight;
-    _size += t._size;
-    return *this;
-}
-
-std::ostream& operator<<(std::ostream& os, fair_group_rover r) {
-    return os << r._weight << ":" << r._size;
-}
-
 fair_group::fair_group(config cfg) noexcept
         : _capacity_tail(fair_group_rover(0, 0))
         , _capacity_head(fair_group_rover(cfg.max_req_count, cfg.max_bytes_count))

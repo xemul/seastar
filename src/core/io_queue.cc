@@ -194,7 +194,6 @@ public:
 
 class queued_io_request : private internal::io_request {
     io_queue& _ioq;
-    const stream_id _stream;
     fair_queue_entry _fq_entry;
     internal::cancellable_queue::link _intent;
     std::unique_ptr<io_desc_read_write> _desc;
@@ -205,9 +204,8 @@ public:
     queued_io_request(internal::io_request req, io_queue& q, io_queue::priority_class_data& pc, internal::io_direction_and_length dnl)
         : io_request(std::move(req))
         , _ioq(q)
-        , _stream(_ioq.request_stream(dnl))
         , _fq_entry(_ioq.request_fq_ticket(dnl))
-        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, dnl, _stream, _fq_entry.ticket()))
+        , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, dnl, _ioq.request_stream(dnl), _fq_entry.ticket()))
     {
     }
 
@@ -237,7 +235,7 @@ public:
 
     future<size_t> get_future() noexcept { return _desc->get_future(); }
     fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
-    stream_id stream() const noexcept { return _stream; }
+    stream_id stream() const noexcept { return _desc->stream(); }
 
     static queued_io_request& from_fq_entry(fair_queue_entry& ent) noexcept {
         return *boost::intrusive::get_parent_from_member(&ent, &queued_io_request::_fq_entry);

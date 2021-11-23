@@ -207,7 +207,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         }
 
         auto& req = h._queue.front();
-        if (!grab_capacity(req._ticket)) {
+        if (!grab_capacity(req.ticket())) {
             break;
         }
 
@@ -215,7 +215,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         h._queue.pop_front();
 
         auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
-        auto req_cost  = req._ticket.normalize(_group.maximum_capacity()) / h._shares;
+        auto req_cost  = req.ticket().normalize(_group.maximum_capacity()) / h._shares;
         auto cost  = exp(priority_class_data::accumulator_t(1.0f/_config.tau.count() * delta.count())) * req_cost;
         priority_class_data::accumulator_t next_accumulated = h._accumulated + cost;
         while (std::isinf(next_accumulated)) {

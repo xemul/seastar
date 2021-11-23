@@ -333,25 +333,10 @@ public:
     /// Try to execute new requests if there is capacity left in the queue.
     void dispatch_requests(std::function<void(fair_queue_entry&)> cb);
 
-    clock_type next_pending_aio() const noexcept {
-        if (_pending) {
-            /*
-             * We expect the disk to release the ticket within some time,
-             * but it's ... OK if it doesn't -- the pending wait still
-             * needs the head rover value to be ahead of the needed value.
-             *
-             * It may happen that the capacity gets released before we think
-             * it will, in this case we will wait for the full value again,
-             * which's sub-optimal. The expectation is that we think disk
-             * works faster, than it really does.
-             */
-            fair_group_rover pending_head = _pending->orig_tail + _pending->cap;
-            fair_queue_ticket over = pending_head.maybe_ahead_of(_group.head());
-            return std::chrono::steady_clock::now() + duration(over);
-        }
-
-        return std::chrono::steady_clock::time_point::max();
-    }
+    /// Gets the time at which the pending state is expected to be resolved.
+    /// Used by the reactor on interrupt mode enter to find out when the
+    /// exit from that mode should occur
+    clock_type next_pending_aio() const noexcept;
 };
 /// @}
 

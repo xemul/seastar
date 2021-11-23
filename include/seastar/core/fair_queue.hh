@@ -165,6 +165,14 @@ public:
 
 using fair_queue_entry_base = bi::slist_base_hook<>;
 
+SEASTAR_CONCEPT(
+template <typename T>
+concept fair_queue_schedulable = requires (T ent) {
+    { ent.dispatch() } noexcept -> std::same_as<void>;
+    { ent.ticket() } noexcept -> std::same_as<fair_queue_ticket>;
+} && std::is_base_of<fair_queue_entry_base, T>::value;
+)
+
 /// \brief Group of queues class
 ///
 /// This is a fair group. It's attached by one or mode fair queues. On machines having the
@@ -176,6 +184,7 @@ using fair_queue_entry_base = bi::slist_base_hook<>;
 /// cope with the number of arriving requests, or the total size of the data withing
 /// the given time frame exceeds the disk throughput.
 template <typename Entry>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<Entry> )
 class fair_group_impl {
     using fair_group_atomic_rover = std::atomic<fair_group_rover>;
     static_assert(fair_group_atomic_rover::is_always_lock_free);
@@ -229,6 +238,7 @@ public:
 /// them first, until balance is restored. This balancing is expected to happen within
 /// a certain time window that obeys an exponential decay.
 template <typename Entry>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<Entry> )
 class fair_queue_impl {
 public:
     /// \brief Fair Queue configuration structure.

@@ -39,6 +39,7 @@ namespace seastar {
 static_assert(sizeof(fair_queue_ticket) == sizeof(uint64_t), "unexpected fair_queue_ticket size");
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 fair_group_impl<T>::fair_group_impl(config cfg) noexcept
         : _capacity_tail(fair_group_rover(0, 0))
         , _capacity_head(fair_group_rover(cfg.max_req_count, cfg.max_bytes_count))
@@ -50,6 +51,7 @@ fair_group_impl<T>::fair_group_impl(config cfg) noexcept
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 fair_group_rover fair_group_impl<T>::grab_capacity(fair_queue_ticket cap) noexcept {
     fair_group_rover cur = _capacity_tail.load(std::memory_order_relaxed);
     while (!_capacity_tail.compare_exchange_weak(cur, cur + cap)) ;
@@ -57,6 +59,7 @@ fair_group_rover fair_group_impl<T>::grab_capacity(fair_queue_ticket cap) noexce
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_group_impl<T>::release_capacity(fair_queue_ticket cap) noexcept {
     fair_group_rover cur = _capacity_head.load(std::memory_order_relaxed);
     while (!_capacity_head.compare_exchange_weak(cur, cur + cap)) ;
@@ -64,6 +67,7 @@ void fair_group_impl<T>::release_capacity(fair_queue_ticket cap) noexcept {
 
 // Priority class, to be used with a given fair_queue
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 class fair_queue_impl<T>::priority_class_data {
     using accumulator_t = double;
     friend class fair_queue_impl;
@@ -81,11 +85,13 @@ public:
 };
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 bool fair_queue_impl<T>::class_compare::operator() (const priority_class_ptr& lhs, const priority_class_ptr & rhs) const noexcept {
     return lhs->_accumulated > rhs->_accumulated;
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 fair_queue_impl<T>::fair_queue_impl(fair_group_impl<T>& group, config cfg)
     : _config(std::move(cfg))
     , _group(group)
@@ -95,6 +101,7 @@ fair_queue_impl<T>::fair_queue_impl(fair_group_impl<T>& group, config cfg)
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 fair_queue_impl<T>::fair_queue_impl(fair_queue_impl&& other)
     : _config(std::move(other._config))
     , _group(other._group)
@@ -105,6 +112,7 @@ fair_queue_impl<T>::fair_queue_impl(fair_queue_impl&& other)
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 fair_queue_impl<T>::~fair_queue_impl() {
     for (const auto& fq : _priority_classes) {
         assert(!fq);
@@ -112,6 +120,7 @@ fair_queue_impl<T>::~fair_queue_impl() {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::push_priority_class(priority_class_data& pc) {
     if (!pc._queued) {
         _handles.push(&pc);
@@ -120,6 +129,7 @@ void fair_queue_impl<T>::push_priority_class(priority_class_data& pc) {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::pop_priority_class(priority_class_data& pc) {
     assert(pc._queued);
     pc._queued = false;
@@ -127,6 +137,7 @@ void fair_queue_impl<T>::pop_priority_class(priority_class_data& pc) {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::normalize_stats() {
     _base = std::chrono::steady_clock::now() - _config.tau;
     for (auto& pc: _priority_classes) {
@@ -137,6 +148,7 @@ void fair_queue_impl<T>::normalize_stats() {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 bool fair_queue_impl<T>::grab_pending_capacity(fair_queue_ticket cap) noexcept {
     fair_group_rover pending_head = _pending->orig_tail + cap;
     if (pending_head.maybe_ahead_of(_group.head())) {
@@ -160,6 +172,7 @@ bool fair_queue_impl<T>::grab_pending_capacity(fair_queue_ticket cap) noexcept {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 bool fair_queue_impl<T>::grab_capacity(fair_queue_ticket cap) noexcept {
     if (_pending) {
         return grab_pending_capacity(cap);
@@ -175,6 +188,7 @@ bool fair_queue_impl<T>::grab_capacity(fair_queue_ticket cap) noexcept {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::register_priority_class(class_id id, uint32_t shares) {
     if (id >= _priority_classes.size()) {
         _priority_classes.resize(id + 1);
@@ -186,6 +200,7 @@ void fair_queue_impl<T>::register_priority_class(class_id id, uint32_t shares) {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::unregister_priority_class(class_id id) {
     auto& pclass = _priority_classes[id];
     assert(pclass && pclass->_queue.empty());
@@ -193,6 +208,7 @@ void fair_queue_impl<T>::unregister_priority_class(class_id id) {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::update_shares_for_class(class_id id, uint32_t shares) {
     assert(id < _priority_classes.size());
     auto& pc = _priority_classes[id];
@@ -201,6 +217,7 @@ void fair_queue_impl<T>::update_shares_for_class(class_id id, uint32_t shares) {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::queue(class_id id, T& ent) {
     priority_class_data& pc = *_priority_classes[id];
     // We need to return a future in this function on which the caller can wait.
@@ -211,11 +228,13 @@ void fair_queue_impl<T>::queue(class_id id, T& ent) {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::notify_request_finished(fair_queue_ticket desc) noexcept {
     _group.release_capacity(desc);
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 void fair_queue_impl<T>::dispatch_requests() {
     while (!_handles.empty()) {
         priority_class_data& h = *_handles.top();
@@ -254,6 +273,7 @@ void fair_queue_impl<T>::dispatch_requests() {
 }
 
 template <typename T>
+SEASTAR_CONCEPT( requires fair_queue_schedulable<T> )
 auto fair_queue_impl<T>::next_pending_aio() const noexcept -> clock_type {
     if (_pending) {
         /*

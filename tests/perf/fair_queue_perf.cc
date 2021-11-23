@@ -29,6 +29,16 @@
 #include <seastar/core/when_all.hh>
 #include <boost/range/irange.hpp>
 
+struct local_fq_entry {
+    fair_queue_entry ent;
+    std::function<void()> submit;
+
+    template <typename Func>
+    local_fq_entry(unsigned weight, unsigned index, Func&& f)
+        : ent(fair_queue_ticket(weight, index))
+        , submit(std::move(f)) {}
+};
+
 static constexpr fair_queue::class_id cid = 0;
 
 struct local_fq_and_class {
@@ -50,16 +60,6 @@ struct local_fq_and_class {
     ~local_fq_and_class() {
         fq.unregister_priority_class(cid);
     }
-};
-
-struct local_fq_entry {
-    fair_queue_entry ent;
-    std::function<void()> submit;
-
-    template <typename Func>
-    local_fq_entry(unsigned weight, unsigned index, Func&& f)
-        : ent(fair_queue_ticket(weight, index))
-        , submit(std::move(f)) {}
 };
 
 struct perf_fair_queue {

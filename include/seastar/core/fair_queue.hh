@@ -128,15 +128,72 @@ public:
 /// the given time frame exceeds the disk throughput.
 class fair_group {
 public:
-    using capacity_t = fair_queue_ticket;
+    using capacity_t = uint64_t;
+    using rate_duration = std::chrono::duration<double, std::ratio<1, 1000>>;
 
 private:
+    using clock_type = std::chrono::steady_clock;
     using fair_group_atomic_rover = std::atomic<capacity_t>;
     static_assert(fair_group_atomic_rover::is_always_lock_free);
 
+    /*
+     * tldr; The math
+     *
+     *    Bw, Br -- write/read bandwidth (bytes per second)
+     *    Ow, Or -- write/read iops (ops per second)
+     *
+     *    BW, BR, OW, OR -- their maximum values (configured)
+     *
+     * Formula:
+     *
+     *    Bw/BW + Br/BR + Ow/IW + Or/IR <= K
+     *
+     * K is the scalar value ~0.9
+     *
+     * Next, bandwidth is bytes time derivatite, iops is ops time
+     * derivative, i.e. Bx = d(bx)/dt, Ox = d(ox)/dt. Then the limiting
+     * formula turns into
+     *
+     *   d(bw/BW + br/BR + ow/OW + or/OR)/dt <= K
+     *
+     * Fair queue tickets are {s, w} size-weight pairs that are
+     *
+     *   s = read_base_count * br, for reads or
+     *       BR/BW * read_base_count * bw, for writes
+     *
+     *   w = read_base_count, for reads or
+     *       OR/OW * read_base_count, for writes
+     *
+     * So the formula turns into
+     *
+     *   d(s/S + w/W)/dr <= K
+     *
+     * where {S, W} is the {BR, OR} ticket (called TICKET below)
+     *
+     * The dF/dt <= K limitation is managed by the leaky bucket algo with
+     * K being the rate and F being the cumulative counter. To enforce our
+     * formula we need to leaky-bucket the
+     *
+     *    accumulate{ ticket.normalize(TICKET) }
+     *
+     * value with the K factor.
+     *
+     * The normalization results in a float of the 2^-20 order of magnitude.
+     * Not to invent float point atomic arithmetics, the result is converted
+     * to an integer by multiplying by a factor that's large enough to turn
+     * 2^-20 into an integer.
+     */
+
+    static constexpr float fixed_point_factor = float(2 << 21);
+
     const fair_queue_ticket _maximum_capacity;
+    const fair_queue_ticket _capacity_rate;
+    const capacity_t _rate;
+    const capacity_t _limit;
+    const capacity_t _replenish_threshold;
     fair_group_atomic_rover _capacity_tail;
     fair_group_atomic_rover _capacity_head;
+    std::atomic<clock_type::time_point> _replenished;
 
     capacity_t fetch_add(fair_group_atomic_rover& rover, capacity_t cap) noexcept;
 
@@ -144,16 +201,20 @@ public:
     struct config {
         unsigned max_req_count;
         unsigned max_bytes_count;
+        unsigned req_count_rate_ms;
+        unsigned bytes_count_rate_ms;
+        float limit_factor = 1.0;
     };
     explicit fair_group(config cfg) noexcept;
     fair_group(fair_group&&) = delete;
 
     fair_queue_ticket maximum_capacity() const noexcept { return _maximum_capacity; }
     capacity_t grab_capacity(capacity_t cap) noexcept;
-    void release_capacity(capacity_t cap) noexcept;
+    void replenish_capacity() noexcept;
 
     capacity_t capacity_deficiency(capacity_t from) const noexcept;
     capacity_t ticket_capacity(fair_queue_ticket ticket) const noexcept;
+    capacity_t rate() const noexcept { return _rate; }
 };
 
 /// \brief Fair queuing class
@@ -236,7 +297,7 @@ private:
 
     // Estimated time to process the given ticket
     std::chrono::microseconds duration(fair_group::capacity_t desc) const noexcept {
-        return desc.duration_at_pace(_config.ticket_weight_pace, _config.ticket_size_pace);
+        return std::chrono::duration_cast<std::chrono::microseconds>(fair_group::rate_duration(desc / _group.rate()));
     }
 
     bool grab_capacity(const fair_queue_entry& ent) noexcept;

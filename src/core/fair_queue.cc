@@ -86,21 +86,52 @@ fair_queue_ticket wrapping_difference(const fair_queue_ticket& a, const fair_que
             std::max<int32_t>(a._size - b._size, 0));
 }
 
+uint64_t wrapping_difference(const uint64_t& a, const uint64_t& b) noexcept {
+    return std::max<int64_t>(a - b, 0);
+}
+
 fair_group::fair_group(config cfg) noexcept
         : _maximum_capacity(cfg.max_req_count, cfg.max_bytes_count)
-        , _capacity_tail(fair_queue_ticket(0, 0))
-        , _capacity_head(fair_queue_ticket(cfg.max_req_count, cfg.max_bytes_count))
+        , _capacity_rate(cfg.req_count_rate_ms, cfg.bytes_count_rate_ms)
+        , _rate(fixed_point_factor * cfg.limit_factor)
+        , _limit(ticket_capacity(_maximum_capacity))
+        , _replenish_threshold(1) // FIXME: too frequent replenishes
+        , _capacity_tail(0)
+        , _capacity_head(_limit)
+        , _replenished(clock_type::now())
 {
     assert(!wrapping_difference(_capacity_tail.load(std::memory_order_relaxed), _capacity_head.load(std::memory_order_relaxed)));
-    seastar_logger.debug("Created fair group, capacity {}:{}", cfg.max_req_count, cfg.max_bytes_count);
+    seastar_logger.debug("Created fair group, capacity {}:{}, limit {}, rate {}, threshold {}",
+            _maximum_capacity, _capacity_rate, _limit, _rate, _replenish_threshold);
 }
 
 auto fair_group::grab_capacity(capacity_t cap) noexcept -> capacity_t {
     return fetch_add(_capacity_tail, cap);
 }
 
-void fair_group::release_capacity(capacity_t cap) noexcept {
-    fetch_add(_capacity_head, cap);
+void fair_group::replenish_capacity() noexcept {
+    auto ts = _replenished.load(std::memory_order_relaxed);
+
+again:
+    auto now = clock_type::now();
+    if (now <= ts) {
+        return;
+    }
+
+    auto delta = std::chrono::duration_cast<rate_duration>(now - ts);
+    float extra_f = _rate * delta.count();
+    capacity_t extra = extra_f;
+    auto lost = std::chrono::duration_cast<std::chrono::microseconds>(rate_duration((extra_f - extra) / _rate));
+
+    if (extra >= _replenish_threshold) {
+        if (!_replenished.compare_exchange_strong(ts, now - lost)) {
+            goto again;
+        }
+
+        auto current_credit = wrapping_difference(_capacity_head.load(std::memory_order_relaxed), _capacity_tail.load(std::memory_order_relaxed));
+        auto max_extra = _limit - std::min(_limit, current_credit);
+        fetch_add(_capacity_head, std::min(extra, max_extra));
+    }
 }
 
 auto fair_group::capacity_deficiency(capacity_t from) const noexcept -> capacity_t {
@@ -108,13 +139,11 @@ auto fair_group::capacity_deficiency(capacity_t from) const noexcept -> capacity
 }
 
 auto fair_group::ticket_capacity(fair_queue_ticket t) const noexcept -> capacity_t {
-    return t;
+    return t.normalize(_capacity_rate) * fixed_point_factor;
 }
 
 auto fair_group::fetch_add(fair_group_atomic_rover& rover, capacity_t cap) noexcept -> capacity_t {
-    capacity_t cur = rover.load(std::memory_order_relaxed);
-    while (!rover.compare_exchange_weak(cur, cur + cap)) ;
-    return cur;
+    return rover.fetch_add(cap);
 }
 
 // Priority class, to be used with a given fair_queue
@@ -282,7 +311,6 @@ void fair_queue::queue(class_id id, fair_queue_entry& ent) {
 void fair_queue::notify_request_finished(fair_queue_ticket desc) noexcept {
     _resources_executing -= desc;
     _requests_executing--;
-    _group.release_capacity(desc);
 }
 
 void fair_queue::notify_request_cancelled(fair_queue_entry& ent) noexcept {
@@ -291,6 +319,8 @@ void fair_queue::notify_request_cancelled(fair_queue_entry& ent) noexcept {
 }
 
 void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
+    _group.replenish_capacity();
+
     while (!_handles.empty()) {
         priority_class_data& h = *_handles.top();
         if (h._queue.empty()) {

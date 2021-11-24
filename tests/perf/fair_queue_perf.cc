@@ -41,6 +41,8 @@ struct local_fq_and_class {
         fair_group::config cfg;
         cfg.max_req_count = 1;
         cfg.max_bytes_count = 1;
+        cfg.req_count_rate_ms = std::numeric_limits<int>::max();
+        cfg.bytes_count_rate_ms = std::numeric_limits<int>::max();
         return cfg;
     }
 
@@ -81,6 +83,8 @@ struct perf_fair_queue {
         fair_group::config cfg;
         cfg.max_req_count = smp::count;
         cfg.max_bytes_count = smp::count;
+        cfg.req_count_rate_ms = std::numeric_limits<int>::max();
+        cfg.bytes_count_rate_ms = std::numeric_limits<int>::max();
         return cfg;
     }
 

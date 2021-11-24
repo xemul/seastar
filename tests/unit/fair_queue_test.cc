@@ -66,6 +66,8 @@ class test_env {
         fair_group::config cfg;
         cfg.max_req_count = cap;
         cfg.max_bytes_count = std::numeric_limits<int>::max();
+        cfg.req_count_rate_ms = std::numeric_limits<int>::max();
+        cfg.bytes_count_rate_ms = std::numeric_limits<int>::max();
         return cfg;
     }
 

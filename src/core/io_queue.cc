@@ -363,8 +363,11 @@ fair_group::config io_group::make_fair_group_config(const io_queue::config& qcfg
         seastar_logger.warn("The disk request rate is too low, configuring it to {}, but you may experience latency problems", max_req_count_min);
         max_req_count = max_req_count_min;
     }
-    return fair_group::config(max_req_count,
-        qcfg.max_bytes_count >> io_queue::request_ticket_size_shift);
+
+    fair_group::config cfg;
+    cfg.max_req_count = max_req_count;
+    cfg.max_bytes_count = qcfg.max_bytes_count >> io_queue::request_ticket_size_shift;
+    return cfg;
 }
 
 io_group::io_group(io_queue::config io_cfg) noexcept

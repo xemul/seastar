@@ -174,7 +174,6 @@ fair_queue::fair_queue(fair_group& group, config cfg)
     , _group(group)
     , _base(std::chrono::steady_clock::now())
 {
-    seastar_logger.debug("Created fair queue, ticket pace {}:{}", cfg.ticket_weight_pace, cfg.ticket_size_pace);
 }
 
 fair_queue::fair_queue(fair_queue&& other)
@@ -216,11 +215,6 @@ void fair_queue::normalize_stats() {
             pc->_accumulated *= std::numeric_limits<priority_class_data::accumulator_t>::min();
         }
     }
-}
-
-std::chrono::microseconds fair_queue_ticket::duration_at_pace(float weight_pace, float size_pace) const noexcept {
-    unsigned long dur = ((_weight * weight_pace) + (_size * size_pace));
-    return std::chrono::microseconds(dur);
 }
 
 bool fair_queue::grab_pending_capacity(const fair_queue_entry& ent) noexcept {

@@ -103,7 +103,7 @@ fair_group::fair_group(config cfg) noexcept
 {
     assert(!wrapping_difference(_capacity_tail.load(std::memory_order_relaxed), _capacity_head.load(std::memory_order_relaxed)));
     seastar_logger.debug("Created fair group, capacity max {} rate {}, limit {}, rate {} (factor {}), threshold {}",
-            _maximum_capacity, _cost_capacity, _replenish_limit, _replenish_rate, _replenish_threshold);
+            _maximum_capacity, _cost_capacity, _replenish_limit, _replenish_rate, cfg.rate_factor, _replenish_threshold);
 }
 
 auto fair_group::grab_capacity(capacity_t cap) noexcept -> capacity_t {

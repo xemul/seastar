@@ -66,6 +66,8 @@ class test_env {
         fair_group::config cfg;
         cfg.max_weight = cap;
         cfg.max_size = std::numeric_limits<int>::max();
+        cfg.weight_rate = std::numeric_limits<int>::max();
+        cfg.size_rate = std::numeric_limits<int>::max();
         return cfg;
     }
 

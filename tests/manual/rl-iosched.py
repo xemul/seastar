@@ -5,6 +5,7 @@ import time
 import subprocess
 import argparse
 import shutil
+import os
 
 parser = argparse.ArgumentParser(description='IO scheduler tester')
 parser.add_argument('--directory', help='Directory to run on', default='/mnt')
@@ -27,11 +28,12 @@ class iotune:
 
 
 class job:
-    def __init__(self, typ, req_size_kb, prl):
+    def __init__(self, typ, req_size_kb, shares, prl = None, rps = None):
         self._typ = typ
         self._req_size = req_size_kb
         self._prl = prl
-        self._shares = 100
+        self._rps = rps
+        self._shares = shares
 
     def prl(self):
         return self._prl
@@ -40,16 +42,20 @@ class job:
         return self._req_size
 
     def to_conf_entry(self, name):
-        return {
+        ret = {
             'name': name,
             'shards': 'all',
             'type': self._typ,
             'shard_info': {
-                'parallelism': self._prl,
                 'reqsize': f'{self._req_size}kB',
                 'shares': self._shares
             }
         }
+        if self._prl is not None:
+            ret['shard_info']['parallelism'] = int(self._prl)
+        if self._rps is not None:
+            ret['shard_info']['rps'] = int(self._rps)
+        return ret
 
 
 class io_tester:
@@ -87,6 +93,9 @@ class io_tester:
         return yaml.safe_load(res)[0]
 
 
+def show_stat_header():
+    print('name througput(kbs) iops lat95(ns) queue-time(ns) execution-time(ns)')
+
 def show_stat_line(res, name):
     st = res[name]
     throughput = st['throughput']
@@ -95,28 +104,67 @@ def show_stat_line(res, name):
     stats = st['stats']
 
     def xtimes(st, nm):
-        return int(st[nm]/st["total_requests"] * 1000000)
+        return int((st[nm] * 1000000) /st["total_requests"])
 
-    print(f'{name}: throughput {throughput} kb/s  IOPS {iops}  lat.95 {lats["p0.95"]}ns  qtime {xtimes(stats, "io_queue_total_delay_sec")}ns  xtime {xtimes(stats, "io_queue_total_exec_sec")}ns')
+    print(f'{name} {throughput} {iops}  {lats["p0.95"]} {xtimes(stats, "io_queue_total_delay_sec")} {xtimes(stats, "io_queue_total_exec_sec")}')
 
 
-print('Pure write')
+iot = iotune(args)
+iot.ensure_io_properties()
+
+# ioprop = yaml.load(open('io_properties.yaml'))
+# read_iops = 0
+# 
+# print(ioprop)
+# for prop in ioprop['disks']:
+#     if prop['mountpoint'] == args.directory:
+#         read_iops = prop['read_iops']
+#         break
+# 
+# if read_iops == 0:
+#     raise 'Cannot find required mountpoint in io-properties'
+
+show_stat_header()
+
+def write_job():
+    return job('seqwrite', 64, 100, prl = 128)
+
+
+def read_job(scale):
+    return job('randread', 4, 100, prl = scale * 16, rps = 6000)
+
+#print(f'# Pure unbound write')
+#m = io_tester(args)
+#m.add_job('write_pure', write_job())
+#res = m.run()
+#show_stat_line(res, 'write_pure')
+#
+#print(f'# Pure rate-limited read')
+#m = io_tester(args)
+#m.add_job('read_pure', read_job(1))
+#res = m.run()
+#show_stat_line(res, 'read_pure')
+#
+#print(f'# Both at a time')
+#m = io_tester(args)
+#m.add_job('write', write_job())
+#m.add_job('read', read_job(1))
+#res = m.run()
+#show_stat_line(res, 'write')
+#show_stat_line(res, 'read')
+
+print(f'# 2x slower read and write')
 m = io_tester(args)
-m.add_job('write', job('seqwrite', 64, 64))
+m.add_job('write', write_job())
+m.add_job('read', read_job(0.5))
 res = m.run()
 show_stat_line(res, 'write')
-
-print('Pure read')
-m = io_tester(args)
-m.add_job('read', job('randread', 4, 2 ** 9))
-res = m.run()
 show_stat_line(res, 'read')
 
-for prl in [ 2 ** i for i in range(0, 8) ]:
-    print(f'Write vs {prl}x Read')
-    m = io_tester(args)
-    m.add_job('write', job('seqwrite', 64, 64))
-    m.add_job('read', job('randread', 4, prl))
-    res = m.run()
-    show_stat_line(res, 'write')
-    show_stat_line(res, 'read')
+print(f'# 2x faster read and write')
+m = io_tester(args)
+m.add_job('write', write_job())
+m.add_job('read', read_job(2))
+res = m.run()
+show_stat_line(res, 'write')
+show_stat_line(res, 'read')

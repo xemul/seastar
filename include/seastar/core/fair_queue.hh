@@ -332,9 +332,8 @@ private:
     std::optional<pending> _pending;
 
     void push_priority_class(priority_class_data& pc);
+    void push_priority_class_from_idle(priority_class_data& pc);
     void pop_priority_class(priority_class_data& pc);
-
-    void normalize_stats();
 
     // Estimated time to process the given ticket
     std::chrono::microseconds duration(fair_group::capacity_t desc) const noexcept {

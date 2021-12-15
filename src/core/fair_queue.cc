@@ -157,9 +157,13 @@ class fair_queue::priority_class_data {
     accumulator_t _accumulated = 0;
     fair_queue_entry::container_list_t _queue;
     bool _queued = false;
+    std::chrono::steady_clock::time_point _inactive;
 
 public:
-    explicit priority_class_data(uint32_t shares) noexcept : _shares(std::max(shares, 1u)) {}
+    explicit priority_class_data(uint32_t shares) noexcept
+        : _shares(std::max(shares, 1u))
+        , _inactive(std::chrono::steady_clock::now())
+    {}
 
     void update_shares(uint32_t shares) noexcept {
         _shares = (std::max(shares, 1u));
@@ -203,19 +207,25 @@ void fair_queue::push_priority_class(priority_class_data& pc) {
     }
 }
 
+void fair_queue::push_priority_class_from_idle(priority_class_data& pc) {
+    if (!pc._queued) {
+        if (!_handles.empty()) {
+            auto now = std::chrono::steady_clock::now();
+            if (pc._inactive < now - _config.tau) {
+                auto min_acc = _handles.top()->_accumulated;
+                pc._accumulated = std::max(pc._accumulated, min_acc);
+            }
+        }
+
+        _handles.push(&pc);
+        pc._queued = true;
+    }
+}
+
 void fair_queue::pop_priority_class(priority_class_data& pc) {
     assert(pc._queued);
     pc._queued = false;
     _handles.pop();
-}
-
-void fair_queue::normalize_stats() {
-    _base = std::chrono::steady_clock::now() - _config.tau;
-    for (auto& pc: _priority_classes) {
-        if (pc) {
-            pc->_accumulated *= std::numeric_limits<priority_class_data::accumulator_t>::min();
-        }
-    }
 }
 
 bool fair_queue::grab_pending_capacity(const fair_queue_entry& ent) noexcept {
@@ -299,7 +309,7 @@ void fair_queue::queue(class_id id, fair_queue_entry& ent) {
     // We need to return a future in this function on which the caller can wait.
     // Since we don't know which queue we will use to execute the next request - if ours or
     // someone else's, we need a separate promise at this point.
-    push_priority_class(pc);
+    push_priority_class_from_idle(pc);
     pc._queue.push_back(ent);
     _resources_queued += ent._ticket;
     _requests_queued++;
@@ -337,21 +347,26 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         _requests_executing++;
         _requests_queued--;
 
-        auto delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
         auto req_cost  = req._ticket.normalize(_group.shares_capacity()) / h._shares;
-        auto cost  = exp(priority_class_data::accumulator_t(1.0f/_config.tau.count() * delta.count())) * req_cost;
-        priority_class_data::accumulator_t next_accumulated = h._accumulated + cost;
+        priority_class_data::accumulator_t next_accumulated = h._accumulated + req_cost;
         while (std::isinf(next_accumulated)) {
-            normalize_stats();
-            // If we have renormalized, our time base will have changed. This should happen very infrequently
-            delta = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _base);
-            cost  = exp(priority_class_data::accumulator_t(1.0f/_config.tau.count() * delta.count())) * req_cost;
-            next_accumulated = h._accumulated + cost;
+            for (auto& pc : _priority_classes) {
+                if (pc) {
+                    if (pc->_queued) {
+                        pc->_accumulated -= h._accumulated;
+                    } else { // this includes h
+                        pc->_accumulated = 0;
+                    }
+                }
+            }
+            next_accumulated = h._accumulated + req_cost;
         }
         h._accumulated = next_accumulated;
 
         if (!h._queue.empty()) {
             push_priority_class(h);
+        } else {
+            h._inactive = std::chrono::steady_clock::now();
         }
 
         cb(req);

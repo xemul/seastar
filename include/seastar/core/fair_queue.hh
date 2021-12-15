@@ -251,9 +251,10 @@ public:
     explicit fair_group(config cfg) noexcept;
     fair_group(fair_group&&) = delete;
 
-    fair_queue_ticket maximum_capacity() const noexcept { return _maximum_capacity; }
+    fair_queue_ticket shares_capacity() const noexcept { return _maximum_capacity; }
     fair_queue_ticket cost_capacity() const noexcept { return _cost_capacity; }
     capacity_t grab_capacity(capacity_t cap) noexcept;
+    capacity_t maximum_capacity() const noexcept { return _replenish_limit; }
     void release_capacity(capacity_t cap) noexcept;
     void replenish_capacity() noexcept;
 

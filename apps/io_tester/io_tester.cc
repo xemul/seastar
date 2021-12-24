@@ -242,15 +242,15 @@ private:
             return parallel_for_each(boost::irange(0u, parallelism), [this, stop, rps, &intent, &in_flight, &pause] (auto dummy) mutable {
                 auto bufptr = allocate_aligned_buffer<char>(this->req_size(), _alignment);
                 auto buf = bufptr.get();
-                return do_until([stop] { return std::chrono::steady_clock::now() > stop; }, [this, buf, stop, &pause, &intent, &in_flight] () mutable {
-                    auto p = std::chrono::duration<double>(pause->get());
-                    return wait_for(std::move(p)).then([this, buf, stop, &intent, &in_flight] () mutable {
+                auto p = std::chrono::duration<double>(pause->get());
+                return wait_for(std::move(p)).then([this, buf, stop, &pause, &intent, &in_flight] () mutable {
+                    return do_until([stop] { return std::chrono::steady_clock::now() > stop; }, [this, buf, stop, &pause, &intent, &in_flight] () mutable {
                         auto start = std::chrono::steady_clock::now();
 
                         in_flight++;
                         _max_in_flight = std::max(_max_in_flight, in_flight);
 
-                        return issue_request(buf, &intent).then_wrapped([this, start, stop, &in_flight] (auto size_f) {
+                        return issue_request(buf, &intent).then_wrapped([this, start, stop, &in_flight, &pause] (auto size_f) {
                             size_t size;
                             try {
                                 size = size_f.get0();
@@ -265,7 +265,14 @@ private:
                                 this->add_result(size, std::chrono::duration_cast<std::chrono::microseconds>(now - start));
                             }
                             in_flight--;
-                            return make_ready_future<>();
+
+                            auto p = std::chrono::duration<double>(pause->get());
+                            auto next = start + std::chrono::duration_cast<std::chrono::microseconds>(p);
+                            if (next > now) {
+                                return wait_for(next - now);
+                            } else {
+                                return make_ready_future<>();
+                            }
                         });
                     });
                 }).then([&intent, &in_flight] {

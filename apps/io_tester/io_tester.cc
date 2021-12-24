@@ -107,6 +107,7 @@ struct shard_info {
 struct options {
     bool dsync = false;
     bool polling_sleep = false;
+    bool lowres_sleep = false;
 };
 
 class class_data;
@@ -127,6 +128,19 @@ struct job_config {
 
 std::array<double, 4> quantiles = { 0.5, 0.95, 0.99, 0.999};
 static bool keep_files = false;
+
+class poisson_process {
+    std::random_device _rd; // uniformly-distributed integer random number generator
+    std::mt19937 _rng;
+    std::exponential_distribution<double> _exp;
+
+public:
+    poisson_process(double pause) : _rd(), _rng(_rd()), _exp(1.0 / pause) {}
+    poisson_process(const poisson_process&) = delete;
+    poisson_process(poisson_process&&) = default;
+
+    double get() { return _exp(_rng); }
+};
 
 class class_data {
 protected:
@@ -150,6 +164,8 @@ protected:
     file _file;
     bool _think = false;
     bool _polling_sleep = false;
+    bool _lowres_sleep = false;
+    unsigned _max_in_flight = 0;
     timer<> _thinker;
 
     virtual future<> do_start(sstring dir, directory_entry_type type) = 0;
@@ -163,6 +179,7 @@ public:
         , _latencies(extended_p_square_probabilities = quantiles)
         , _pos_distribution(0,  _config.file_size / _config.shard_info.request_size)
         , _polling_sleep(cfg.options.polling_sleep)
+        , _lowres_sleep(cfg.options.lowres_sleep)
         , _thinker([this] { think_tick(); })
     {
         if (_config.shard_info.think_after > 0us) {
@@ -204,16 +221,19 @@ private:
     }
 
     future<> issue_requests_at_rate(std::chrono::steady_clock::time_point stop, unsigned rps, unsigned parallelism) {
-        return do_with(io_intent{}, 0u, [this, stop, rps, parallelism] (io_intent& intent, unsigned& in_flight) {
-            return parallel_for_each(boost::irange(0u, parallelism), [this, stop, rps, &intent, &in_flight, parallelism] (auto dummy) mutable {
+        auto pause = std::chrono::duration_cast<std::chrono::duration<double>>(1s) / rps;
+        auto pp = std::make_unique<poisson_process>(pause.count());
+        return do_with(io_intent{}, std::move(pp), 0u, [this, stop, rps, parallelism] (io_intent& intent, std::unique_ptr<poisson_process>& pause, unsigned& in_flight) {
+            return parallel_for_each(boost::irange(0u, parallelism), [this, stop, rps, &intent, &in_flight, &pause] (auto dummy) mutable {
                 auto bufptr = allocate_aligned_buffer<char>(this->req_size(), _alignment);
                 auto buf = bufptr.get();
-                auto pause = std::chrono::duration_cast<std::chrono::microseconds>(1s) / rps;
-                return seastar::sleep((pause / parallelism) * dummy).then([this, buf, stop, pause, &intent, &in_flight] () mutable {
-                    return do_until([stop] { return std::chrono::steady_clock::now() > stop; }, [this, buf, stop, pause, &intent, &in_flight] () mutable {
+                return do_until([stop] { return std::chrono::steady_clock::now() > stop; }, [this, buf, stop, &pause, &intent, &in_flight] () mutable {
                         auto start = std::chrono::steady_clock::now();
+
                         in_flight++;
-                        return issue_request(buf, &intent).then_wrapped([this, start, pause, stop, &in_flight] (auto size_f) {
+                        _max_in_flight = std::max(_max_in_flight, in_flight);
+
+                        return issue_request(buf, &intent).then_wrapped([this, start, &pause, stop, &in_flight] (auto size_f) {
                             size_t size;
                             try {
                                 size = size_f.get0();
@@ -228,24 +248,28 @@ private:
                                 this->add_result(size, std::chrono::duration_cast<std::chrono::microseconds>(now - start));
                             }
                             in_flight--;
-                            auto next = start + pause;
 
-                            if (next > now) {
-                              if (_polling_sleep) {
+                            auto p = std::chrono::duration<double>(pause->get());
+                        retry:
+                            auto next = start + std::chrono::duration_cast<std::chrono::microseconds>(p);
+                            if (next <= now) {
+                                // probably the system cannot keep-up with this rate, sleep more
+                                p += std::chrono::duration<double>(pause->get());
+                                goto retry;
+                            }
+
+                            if (_polling_sleep) {
                                 return do_until([next] { return std::chrono::steady_clock::now() >= next; }, [this] {
-                                    auto tsk = make_task(_sg, [] {});
-                                    schedule(tsk);
-                                    return tsk->get_future();
-                                });
-                              } else {
+                                        auto tsk = make_task(_sg, [] {});
+                                        schedule(tsk);
+                                        return tsk->get_future();
+                                    });
+                            } else if (_lowres_sleep) {
                                 return seastar::sleep(std::chrono::duration_cast<std::chrono::microseconds>(next - now));
-                              }
                             } else {
-                                // probably the system cannot keep-up with this rate
-                                return make_ready_future<>();
+                                return seastar::sleep<lowres_clock>(std::chrono::duration_cast<std::chrono::milliseconds>(next - now));
                             }
                         });
-                    });
                 }).then([&intent, &in_flight] {
                     intent.cancel();
                     return do_until([&in_flight] { return in_flight == 0; }, [] { return seastar::sleep(100ms /* ¯\_(ツ)_/¯ */); });
@@ -513,6 +537,7 @@ public:
         out << YAML::Key << "max" << YAML::Value << max_latency();
         out << YAML::EndMap;
         out << YAML::Key << "stats" << YAML::BeginMap;
+        out << YAML::Key << "max_in_flight" << YAML::Value << _max_in_flight;
         out << YAML::Key << "total_requests" << YAML::Value << requests();
         emit_metrics(out);
         out << YAML::EndMap;
@@ -692,6 +717,9 @@ struct convert<options> {
         }
         if (node["polling_sleep"]) {
             op.polling_sleep = node["polling_sleep"].as<bool>();
+        }
+        if (node["lowres_sleep"]) {
+            op.lowres_sleep = node["lowres_sleep"].as<bool>();
         }
         return true;
     }

@@ -46,7 +46,7 @@ class job:
     def rqsz(self):
         return self._req_size
 
-    def to_conf_entry(self, name):
+    def to_conf_entry(self, name, sleep):
         ret = {
             'name': name,
             'shards': 'all',
@@ -55,10 +55,12 @@ class job:
                 'reqsize': f'{self._req_size}kB',
                 'shares': self._shares,
             },
-            'options': {
-                'polling_sleep': 'true',
-            },
         }
+        if sleep == 'lowres':
+            ret['options'] = { 'lowres_sleep': 'true' }
+        if sleep == 'polling':
+            ret['options'] = { 'polling_sleep': 'true' }
+
         if self._prl is not None:
             ret['shard_info']['parallelism'] = int(self._prl)
         if self._rps is not None:
@@ -81,8 +83,8 @@ class io_tester:
         if args.shards is not None:
             self._io_tester_args += [ f'-c{args.shards}' ]
 
-    def add_job(self, name, job):
-        self._jobs.append(job.to_conf_entry(name))
+    def add_job(self, name, job, sleep = 'default'):
+        self._jobs.append(job.to_conf_entry(name, sleep))
 
     def _setup_data_sizes(self):
         du = shutil.disk_usage(self._dir)
@@ -123,6 +125,7 @@ class io_tester:
                                 'io_queue_total_operations': 0,
                                 'io_queue_total_exec_sec': 0,
                                 'io_queue_total_delay_sec': 0,
+                                'max_in_flight': 0,
                             },
                     }
 
@@ -133,16 +136,18 @@ class io_tester:
                 ret[wl]['stats']['io_queue_total_operations'] += shard_res[wl]['stats']['io_queue_total_operations']
                 ret[wl]['stats']['io_queue_total_delay_sec'] += shard_res[wl]['stats']['io_queue_total_delay_sec']
                 ret[wl]['stats']['io_queue_total_exec_sec'] += shard_res[wl]['stats']['io_queue_total_exec_sec']
+                ret[wl]['stats']['max_in_flight'] += shard_res[wl]['stats']['max_in_flight']
 
         for wl in ret:
             ret[wl]['latencies']['p0.95'] /= len(res)
+            ret[wl]['stats']['max_in_flight'] /= len(res)
 
         return ret
 
 
 def show_stat_header():
     print('-' * 20 + '8<' + '-' * 20)
-    print('name           througput(kbs) iops lat95(us) queue-time(us) execution-time(us) K(bw) K(iops) K()')
+    print('name           througput(kbs) iops lat95(us) latq(us) latx(us) qlen    K(bw) K(iops) K()')
 
 def run_and_show_results(m, ioprop):
     def xtimes(st, nm):
@@ -162,8 +167,9 @@ def run_and_show_results(m, ioprop):
         else:
             k_bw = throughput / (ioprop['write_bandwidth']/1000)
             k_iops = iops / ioprop['write_iops']
+        qlen = stats['max_in_flight']
 
-        print(f'{name:20} {int(throughput):7} {int(iops):5} {lats["p0.95"]:.1f} {xtimes(stats, "io_queue_total_delay_sec"):.1f} {xtimes(stats, "io_queue_total_exec_sec"):.1f} {k_bw:.3f} {k_iops:.3f} {k_bw + k_iops:.3f}')
+        print(f'{name:20} {int(throughput):7} {int(iops):5} {lats["p0.95"]:.1f} {xtimes(stats, "io_queue_total_delay_sec"):.1f} {xtimes(stats, "io_queue_total_exec_sec"):.1f} {qlen:.1f}     {k_bw:.3f} {k_iops:.3f} {k_bw + k_iops:.3f}')
 
 
 iot = iotune(args)
@@ -186,22 +192,35 @@ if nr_cores is None:
     nr_cores = multiprocessing.cpu_count()
 
 read_rps_per_shard = int(read_iops / nr_cores * 0.5)
-read_fibers = 5
-read_rps = read_rps_per_shard / read_fibers
 read_shares = 2500
+
+print(f'** Read IOPS goal {read_rps_per_shard * nr_cores}')
 
 write_fibers = 2
 write_shares = 100
 
-print(f'Read RPS:{read_rps} fibers:{read_fibers}')
+def do_run_tests(sleep):
+    for read_fibers in [ 5, 128, read_rps_per_shard ]:
+        read_rps = read_rps_per_shard / read_fibers
 
-show_stat_header()
+        print(f'Read RPS:{read_rps} fibers:{read_fibers}')
 
-m = io_tester(args)
-m.add_job(f'read_rated_{read_shares}', job('randread', args.read_reqsize, shares = read_shares, prl = read_fibers, rps = read_rps))
-run_and_show_results(m, ioprop)
+        show_stat_header()
 
-m = io_tester(args)
-m.add_job('write_100', job('seqwrite', args.write_reqsize, shares = write_shares, prl = write_fibers))
-m.add_job(f'read_rated_{read_shares}', job('randread', args.read_reqsize, shares = read_shares, prl = read_fibers, rps = read_rps))
-run_and_show_results(m, ioprop)
+        m = io_tester(args)
+        m.add_job(f'read_rated_{read_shares}', job('randread', args.read_reqsize, shares = read_shares, prl = read_fibers, rps = read_rps), sleep)
+        run_and_show_results(m, ioprop)
+
+        m = io_tester(args)
+        m.add_job('write_100', job('seqwrite', args.write_reqsize, shares = write_shares, prl = write_fibers))
+        m.add_job(f'read_rated_{read_shares}', job('randread', args.read_reqsize, shares = read_shares, prl = read_fibers, rps = read_rps), sleep)
+        run_and_show_results(m, ioprop)
+
+print('* Highres sleep')
+do_run_tests('default')
+
+print('* Lowres sleep')
+do_run_tests('lowres')
+
+print('* Polling sleep')
+do_run_tests('polling')

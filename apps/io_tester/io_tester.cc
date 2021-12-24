@@ -220,6 +220,21 @@ private:
         });
     }
 
+    future<> wait_for(std::chrono::duration<double> pause) {
+        if (_polling_sleep) {
+            auto next = std::chrono::steady_clock::now() + pause;
+            return do_until([next] { return std::chrono::steady_clock::now() >= next; }, [this] {
+                    auto tsk = make_task(_sg, [] {});
+                    schedule(tsk);
+                    return tsk->get_future();
+                    });
+        } else if (_lowres_sleep) {
+            return seastar::sleep(std::chrono::duration_cast<std::chrono::microseconds>(pause));
+        } else {
+            return seastar::sleep<lowres_clock>(std::chrono::duration_cast<std::chrono::milliseconds>(pause));
+        }
+    }
+
     future<> issue_requests_at_rate(std::chrono::steady_clock::time_point stop, unsigned rps, unsigned parallelism) {
         auto pause = std::chrono::duration_cast<std::chrono::duration<double>>(1s) / rps;
         auto pp = std::make_unique<poisson_process>(pause.count());
@@ -228,12 +243,14 @@ private:
                 auto bufptr = allocate_aligned_buffer<char>(this->req_size(), _alignment);
                 auto buf = bufptr.get();
                 return do_until([stop] { return std::chrono::steady_clock::now() > stop; }, [this, buf, stop, &pause, &intent, &in_flight] () mutable {
+                    auto p = std::chrono::duration<double>(pause->get());
+                    return wait_for(std::move(p)).then([this, buf, stop, &intent, &in_flight] () mutable {
                         auto start = std::chrono::steady_clock::now();
 
                         in_flight++;
                         _max_in_flight = std::max(_max_in_flight, in_flight);
 
-                        return issue_request(buf, &intent).then_wrapped([this, start, &pause, stop, &in_flight] (auto size_f) {
+                        return issue_request(buf, &intent).then_wrapped([this, start, stop, &in_flight] (auto size_f) {
                             size_t size;
                             try {
                                 size = size_f.get0();
@@ -248,28 +265,9 @@ private:
                                 this->add_result(size, std::chrono::duration_cast<std::chrono::microseconds>(now - start));
                             }
                             in_flight--;
-
-                            auto p = std::chrono::duration<double>(pause->get());
-                        retry:
-                            auto next = start + std::chrono::duration_cast<std::chrono::microseconds>(p);
-                            if (next <= now) {
-                                // probably the system cannot keep-up with this rate, sleep more
-                                p += std::chrono::duration<double>(pause->get());
-                                goto retry;
-                            }
-
-                            if (_polling_sleep) {
-                                return do_until([next] { return std::chrono::steady_clock::now() >= next; }, [this] {
-                                        auto tsk = make_task(_sg, [] {});
-                                        schedule(tsk);
-                                        return tsk->get_future();
-                                    });
-                            } else if (_lowres_sleep) {
-                                return seastar::sleep(std::chrono::duration_cast<std::chrono::microseconds>(next - now));
-                            } else {
-                                return seastar::sleep<lowres_clock>(std::chrono::duration_cast<std::chrono::milliseconds>(next - now));
-                            }
+                            return make_ready_future<>();
                         });
+                    });
                 }).then([&intent, &in_flight] {
                     intent.cancel();
                     return do_until([&in_flight] { return in_flight == 0; }, [] { return seastar::sleep(100ms /* ¯\_(ツ)_/¯ */); });

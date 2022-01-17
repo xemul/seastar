@@ -380,7 +380,7 @@ fair_group::config io_group::make_fair_group_config(const io_queue::config& qcfg
     return cfg;
 }
 
-io_group::io_group(io_queue::config io_cfg) noexcept
+io_group::io_group(io_queue::config io_cfg)
     : _config(std::move(io_cfg))
 {
     auto fg_cfg = make_fair_group_config(_config);
@@ -415,7 +415,14 @@ io_group::io_group(io_queue::config io_cfg) noexcept
 
             auto cap = _fgs[g_idx]->ticket_capacity(fair_queue_ticket(weight, size));
             if (cap > max_cap) {
-                assert(shift > 0);
+                if (shift == 0) {
+                    auto n_goal = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(_config.rate_limit_duration * cap / max_cap);
+                    throw std::runtime_error(fmt::format("The disk cannot meet latency goal, the minimal value is {:.1f}ms", n_goal.count()));
+                }
+                if (shift < 5) {
+                    seastar_logger.warn("The disk meets latency goal, but the maximum request size would be less than 16k");
+                }
+
                 max_size = std::min(max_size, prev_size);
                 break;
             }

@@ -165,7 +165,7 @@ private:
 
 class io_group {
 public:
-    explicit io_group(io_queue::config io_cfg) noexcept;
+    explicit io_group(io_queue::config io_cfg);
 
 private:
     friend class io_queue;

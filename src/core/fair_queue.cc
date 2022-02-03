@@ -175,6 +175,8 @@ class fair_queue::priority_class_data {
 
 public:
     explicit priority_class_data(uint32_t shares) noexcept : _shares(std::max(shares, 1u)) {}
+    priority_class_data(const priority_class_data&) = delete;
+    priority_class_data(priority_class_data&&) = delete;
 
     void update_shares(uint32_t shares) noexcept {
         _shares = (std::max(shares, 1u));
@@ -419,7 +421,14 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
 
 std::vector<seastar::metrics::impl::metric_definition_impl> fair_queue::metrics(class_id c) {
     namespace sm = seastar::metrics;
+    priority_class_data& pc = *_priority_classes[c];
     return std::vector<sm::impl::metric_definition_impl>({
+            sm::make_derive("tokens",
+                    [&pc] { return fair_group::capacity_tokens(pc._pure_accumulated); },
+                    sm::description("Number of rate-limit tokens")),
+            sm::make_derive("adjusted_tokens",
+                    [&pc] { return fair_group::capacity_tokens(pc._accumulated); },
+                    sm::description("Number of rate-limit tokens adjusted for shares and preemption")),
     });
 }
 

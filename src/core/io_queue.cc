@@ -568,6 +568,15 @@ void io_queue::register_stats(sstring name, priority_class_data& pc) {
         metrics.emplace_back(std::move(m));
     }
 
+    unsigned si = 0;
+    for (auto&& s : _streams) {
+        for (auto&& m : s.metrics(pc.fq_class())) {
+            m(ioshard_l)(owner_l)(mnt_l)(class_l)(sm::label("stream")(si));
+            metrics.emplace_back(std::move(m));
+        }
+        si++;
+    }
+
     new_metrics.add_group("io_queue", std::move(metrics));
     pc.metric_groups = std::exchange(new_metrics, {});
 }

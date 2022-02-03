@@ -218,7 +218,9 @@ int main(int ac, char** av) {
             seastar::sleep(duration).get();
 
             workers.invoke_on_all(&worker::stop).get();
-            auto real_duration = steady_clock::now() - start;
+            seconds real_duration = duration_cast<seconds>(steady_clock::now() - start);
+
+            fmt::print("took {}s (expected {}s)\n", real_duration.count(), duration.count());
 
             stats st(real_duration.count()), st_targets(real_duration.count());
             for (unsigned i = 0; i < smp::count; i++) {

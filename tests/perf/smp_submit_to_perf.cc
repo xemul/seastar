@@ -213,13 +213,14 @@ int main(int ac, char** av) {
         return async([cfg, duration] {
             sharded<worker> workers;
 
+            auto start = steady_clock::now();
             workers.start(cfg).get();
             seastar::sleep(duration).get();
 
-            fmt::print("sopping workers\n");
             workers.invoke_on_all(&worker::stop).get();
+            auto real_duration = steady_clock::now() - start;
 
-            stats st(duration.count()), st_targets(duration.count());
+            stats st(real_duration.count()), st_targets(real_duration.count());
             for (unsigned i = 0; i < smp::count; i++) {
                 workers.invoke_on(i, [&st, &st_targets] (worker& w) {
                     if (w.is_target()) {
@@ -233,7 +234,6 @@ int main(int ac, char** av) {
             fmt::print("workers: min {:.1f} avg {:.1f} max {:.1f} op/s\n", st.min(), st.avg(), st.max());
             fmt::print("targets: min {:.1f} avg {:.1f} max {:.1f} op/s\n", st_targets.min(), st_targets.avg(), st_targets.max());
 
-            fmt::print("sopping sharded<workers>\n");
             workers.stop().get();
         });
     });

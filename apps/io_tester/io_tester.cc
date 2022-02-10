@@ -175,6 +175,7 @@ struct shard_info {
 
 struct options {
     bool dsync = false;
+    std::optional<bool> nowait = {};
     ::sleep_fn sleep_fn = timer_sleep<lowres_clock>;
     ::pause_fn pause_fn = make_uniform_pause;
 };
@@ -506,6 +507,9 @@ private:
         file_open_options options;
         options.extent_allocation_size_hint = _config.file_size;
         options.append_is_unlikely = true;
+        if (_config.options.nowait) {
+            options.set_nowait = _config.options.nowait.value();
+        }
         return open_file_dma(fname, flags, options).then([this, fname] (auto f) {
             _file = f;
             auto maybe_remove_file = [] (sstring fname) {
@@ -546,8 +550,12 @@ private:
         if (_config.options.dsync) {
             flags |= open_flags::dsync;
         }
+        file_open_options options;
+        if (_config.options.nowait) {
+            options.set_nowait = _config.options.nowait.value();
+        }
 
-        return open_file_dma(name, flags).then([this] (auto f) {
+        return open_file_dma(name, flags, std::move(options)).then([this] (auto f) {
             _file = std::move(f);
             return _file.size().then([this] (uint64_t size) {
                 auto shard_area_size = align_down<uint64_t>(size / smp::count, 1 << 20);
@@ -782,6 +790,9 @@ struct convert<options> {
     static bool decode(const Node& node, options& op) {
         if (node["dsync"]) {
             op.dsync = node["dsync"].as<bool>();
+        }
+        if (node["nowait"]) {
+            op.nowait = node["nowait"].as<bool>();
         }
         if (node["sleep_type"]) {
             auto st = node["sleep_type"].as<std::string>();

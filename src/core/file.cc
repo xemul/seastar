@@ -93,7 +93,7 @@ file_handle::to_file() && {
 
 posix_file_impl::posix_file_impl(int fd, open_flags f, file_open_options options, dev_t device_id, bool nowait_works)
         : _device_id(device_id)
-        , _nowait_works(nowait_works)
+        , _nowait_works(options.set_nowait.value_or(nowait_works))
         , _io_queue(engine().get_io_queue(_device_id))
         , _open_flags(f)
         , _fd(fd)

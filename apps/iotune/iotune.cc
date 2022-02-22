@@ -432,13 +432,17 @@ public:
         , _file_size(maximum_size)
     {}
 
-    future<> create_data_file() {
+    future<> create_data_file(bool with_odsync) {
         // XFS likes access in many directories better.
-        return make_directory(_dirpath.string()).then([this] {
+        return make_directory(_dirpath.string()).then([this, with_odsync] {
             auto testfile = _dirpath / fs::path("testfile");
             file_open_options options;
             options.extent_allocation_size_hint = _file_size;
-            return open_file_dma(testfile.string(), open_flags::rw | open_flags::create, std::move(options)).then([this, testfile] (file file) {
+            open_flags flags = open_flags::rw | open_flags::create;
+            if (with_odsync) {
+                flags |= open_flags::dsync;
+            }
+            return open_file_dma(testfile.string(), flags, std::move(options)).then([this, testfile] (file file) {
                 _file = file;
                 return remove_file(testfile.string()).then([this] {
                     return remove_file(_dirpath.string());
@@ -547,9 +551,9 @@ public:
         });
     }
 
-    future<> create_data_file() {
-        return _iotune_test_file.invoke_on_all([] (test_file& tf) {
-            return tf.create_data_file();
+    future<> create_data_file(bool with_odsync) {
+        return _iotune_test_file.invoke_on_all([with_odsync] (test_file& tf) {
+            return tf.create_data_file(with_odsync);
         });
     }
 
@@ -686,6 +690,7 @@ fs::path mountpoint_of(sstring filename) {
 int main(int ac, char** av) {
     namespace bpo = boost::program_options;
     bool fs_check = false;
+    bool dsync_write = false;
 
     app_template::config app_cfg;
     app_cfg.name = "IOTune";
@@ -701,6 +706,7 @@ int main(int ac, char** av) {
         ("fs-check", bpo::bool_switch(&fs_check), "perform FS check only")
         ("accuracy", bpo::value<unsigned>()->default_value(3), "acceptable deviation of measurements (percents)")
         ("saturation", bpo::value<sstring>()->default_value(""), "measure saturation lengths (read | write | both) (this is very slow!)")
+        ("dsync-writes", bpo::bool_switch(&dsync_write), "measure O_DSYNC write throughput and IOPS")
     ;
 
     return app.run(ac, av, [&] {
@@ -797,7 +803,7 @@ int main(int ac, char** av) {
                     return (accuracy == 0 || stdev > accuracy) ? fmt::format(" (deviation {}%)", int(round(stdev))) : std::string("");
                 };
 
-                iotune_tests.create_data_file().get();
+                iotune_tests.create_data_file(false).get();
 
                 fmt::print("Starting Evaluation. This may take a while...\n");
                 fmt::print("Measuring sequential write bandwidth: ");
@@ -846,6 +852,46 @@ int main(int ac, char** av) {
                 auto read_iops = iotune_tests.read_random_data(test_directory.minimum_io_size(), duration * 0.1).get0();
                 rates = iotune_tests.get_sharded_worst_rates().get0();
                 fmt::print("{} IOPS{}\n", uint64_t(read_iops.iops), accuracy_msg());
+
+                if (dsync_write) {
+                    stop.stop_now();
+                    ::iotune_multi_shard_context iotune_tests(test_directory);
+                    iotune_tests.start().get();
+                    auto stop2 = deferred_stop(iotune_tests);
+                    bool transparent_dsync = true;
+
+                    iotune_tests.create_data_file(true).get();
+
+                    fmt::print("Measuring sequential O_DSYNC write bandwidth: ");
+                    std::cout.flush();
+                    io_rates dsync_write_bw;
+                    size_t sequential_buffer_size = 1 << 20;
+                    for (unsigned shard = 0; shard < smp::count; ++shard) {
+                        dsync_write_bw += iotune_tests.write_sequential_data(shard, sequential_buffer_size, duration * 0.70 / smp::count).get0();
+                    }
+                    dsync_write_bw.bytes_per_sec /= smp::count;
+                    rates = iotune_tests.get_serial_rates().get0();
+                    fmt::print("{} MB/s{}\n", uint64_t(dsync_write_bw.bytes_per_sec / (1024 * 1024)), accuracy_msg());
+
+                    if (dsync_write_bw.bytes_per_sec * (1 + rates.stdev_percents()) < write_bw.bytes_per_sec * 0.95) {
+                        transparent_dsync = false;
+                    }
+
+                    fmt::print("Measuring random O_DSYNC write IOPS: ");
+                    std::cout.flush();
+                    auto dsync_write_iops = iotune_tests.write_random_data(test_directory.minimum_io_size(), duration * 0.1).get0();
+                    rates = iotune_tests.get_sharded_worst_rates().get0();
+                    fmt::print("{} IOPS{}\n", uint64_t(dsync_write_iops.iops), accuracy_msg());
+
+                    if (dsync_write_iops.iops * (1 + rates.stdev_percents()) < write_iops.iops * 0.95) {
+                        transparent_dsync = false;
+                    }
+
+                    if (!transparent_dsync) {
+                        iotune_logger.warn("This disk is not handling O_DSYNC writes properly");
+                        // FIXME -- if seastar supports O_DSYNC scheduling, put this into desc below
+                    }
+                }
 
                 struct disk_descriptor desc;
                 desc.mountpoint = mountpoint;

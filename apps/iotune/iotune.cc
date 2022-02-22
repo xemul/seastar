@@ -708,6 +708,15 @@ int main(int ac, char** av) {
             auto accuracy = configuration["accuracy"].as<unsigned>();
             auto saturation = configuration["saturation"].as<sstring>();
 
+            if (configuration.contains("io-properties") || configuration.contains("io-properties-file")) {
+                if (configuration.contains("properties-file")) {
+                    iotune_logger.error("Generating the properties file conflicts with --io-properties(-file) option(s)");
+                    return 1;
+                }
+
+                iotune_logger.warn("The tool shouldn't be configured with properties file, did you mean --properties-file option?");
+            }
+
             bool read_saturation, write_saturation;
             if (saturation == "") {
                 read_saturation = false;

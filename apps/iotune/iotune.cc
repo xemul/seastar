@@ -48,6 +48,7 @@
 #include <seastar/core/fsqual.hh>
 #include <seastar/core/loop.hh>
 #include <seastar/util/defer.hh>
+#include <seastar/util/closeable.hh>
 #include <seastar/util/log.hh>
 #include <seastar/util/std-compat.hh>
 #include <seastar/util/read_first_line.hh>
@@ -516,8 +517,11 @@ class iotune_multi_shard_context {
     seastar::sharded<std::vector<unsigned>> sharded_rates;
 
 public:
-    future<> stop() {
-        return _iotune_test_file.stop().then([this] { return sharded_rates.stop(); });
+    future<> stop() noexcept {
+        return _iotune_test_file.stop().then([this] { return sharded_rates.stop(); }).handle_exception([] (auto eptr) {
+            fmt::print("Error occurred during iotune context shutdown: {}", eptr);
+            abort();
+        });
     }
 
     future<> start() {
@@ -785,14 +789,7 @@ int main(int ac, char** av) {
 
                 ::iotune_multi_shard_context iotune_tests(test_directory);
                 iotune_tests.start().get();
-                auto stop = defer([&iotune_tests] () noexcept {
-                    try {
-                        iotune_tests.stop().get();
-                    } catch (...) {
-                        fmt::print("Error occurred during iotune context shutdown: {}", std::current_exception());
-                        abort();
-                    }
-                });
+                auto stop = deferred_stop(iotune_tests);
 
                 row_stats rates;
                 auto accuracy_msg = [accuracy, &rates] {

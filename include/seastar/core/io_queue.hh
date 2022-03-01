@@ -164,6 +164,15 @@ public:
     request_limits get_request_limits() const noexcept;
     const config& get_config() const noexcept;
 
+    struct class_statistics {
+        uint64_t queued_requests = 0;
+        uint64_t executing_requests = 0;
+        uint64_t total_read_requests = 0;
+        uint64_t total_write_requests = 0;
+    };
+
+    class_statistics get_class_stats(io_priority_class pc) const noexcept;
+
 private:
     static fair_queue::config make_fair_queue_config(const config& cfg, sstring label);
     void register_stats(sstring name, priority_class_data& pc);

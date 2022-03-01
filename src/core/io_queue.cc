@@ -197,6 +197,15 @@ public:
 
     fair_queue::class_id fq_class() const noexcept { return _pc.id(); }
 
+    io_queue::class_statistics get_stats() const noexcept {
+        class_statistics st;
+        st.queued_requests = _nr_queued;
+        st.executing_requests = _nr_executing;
+        st.total_read_requests = _rwstat[io_direction_and_length::read_idx].ops;
+        st.total_write_requests = _rwstat[io_direction_and_length::write_idx].ops;
+        return st;
+    }
+
     std::vector<seastar::metrics::impl::metric_definition_impl> metrics();
     metrics::metric_groups metric_groups;
 };
@@ -768,6 +777,15 @@ std::vector<seastar::metrics::impl::metric_definition_impl> io_queue::priority_c
             }, sm::description("random delay time in the queue")),
             sm::make_gauge("shares", _shares, sm::description("current amount of shares"))
     });
+}
+
+io_queue::class_statistics io_queue::get_class_stats(io_priority_class pc) const noexcept {
+    auto id = pc.id();
+    if (id >= _priority_classes.size() || !_priority_classes[id]) {
+        return class_statistics{};
+    } else {
+        return _priority_classes[id]->get_stats();
+    }
 }
 
 void io_queue::register_stats(sstring name, priority_class_data& pc) {

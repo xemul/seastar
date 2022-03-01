@@ -33,6 +33,7 @@
 #include <seastar/core/with_scheduling_group.hh>
 #include <seastar/core/metrics_api.hh>
 #include <seastar/core/io_intent.hh>
+#include <seastar/core/io_queue.hh>
 #include <seastar/util/later.hh>
 #include <chrono>
 #include <vector>
@@ -475,11 +476,14 @@ protected:
 
 public:
     virtual void emit_results(YAML::Emitter& out) = 0;
+    virtual void watchdog_tick(unsigned cnt) = 0;
 };
 
 class io_class_data : public class_data {
 protected:
     bool _is_dev_null = false;
+    const io_queue* _watchdog_queue = nullptr;
+    io_queue::class_statistics _watchdog_prev_stats = {};
 
     future<size_t> on_io_completed(future<size_t> f) {
         if (!_is_dev_null) {
@@ -495,6 +499,16 @@ public:
     io_class_data(job_config cfg) : class_data(std::move(cfg)) {}
 
     future<> do_start(sstring path, directory_entry_type type) override {
+        return do_start_on(path, type).then([this] {
+            return _file.stat().then([this] (struct ::stat st) {
+                _watchdog_queue = &engine().get_io_queue(st.st_dev);
+                return make_ready_future<>();
+            });
+        });
+    }
+
+private:
+    future<> do_start_on(sstring path, directory_entry_type type) {
         if (type == directory_entry_type::directory) {
             return do_start_on_directory(path);
         }
@@ -510,7 +524,6 @@ public:
         throw std::runtime_error(format("Unsupported storage. {} should be directory or block device", path));
     }
 
-private:
     future<> do_start_on_directory(sstring dir) {
         auto fname = format("{}/test-{}-{:d}", dir, name(), this_shard_id());
         auto flags = open_flags::rw | open_flags::create;
@@ -624,6 +637,20 @@ public:
         emit_metrics(out);
         out << YAML::EndMap;
     }
+
+    virtual void watchdog_tick(unsigned cnt) override {
+        if (_watchdog_queue == nullptr) {
+            return;
+        }
+
+        auto st = _watchdog_queue->get_class_stats(_iop);
+        fmt::print("{:5d}.{:2d}:{:16}  queued {:<10d} executing {:<10d} total read {:<10d} write {:<10d}\n", cnt, this_shard_id(), name(),
+            st.queued_requests, st.executing_requests,
+            st.total_read_requests - _watchdog_prev_stats.total_read_requests,
+            st.total_write_requests - _watchdog_prev_stats.total_write_requests
+        );
+        _watchdog_prev_stats = st;
+    }
 };
 
 class read_io_class_data : public io_class_data {
@@ -668,6 +695,8 @@ public:
         auto throughput = total_data() / total_duration().count();
         out << YAML::Key << "throughput" << YAML::Value << throughput;
     }
+
+    virtual void watchdog_tick(unsigned cnt) override {}
 };
 
 std::unique_ptr<class_data> job_config::gen_class_data() {
@@ -866,8 +895,17 @@ class context {
     sstring _dir;
     directory_entry_type _type;
     std::chrono::seconds _duration;
-
+    timer<> _watchdog;
+    unsigned _watchdog_count = 0;
     semaphore _finished;
+
+    void watchdog_tick() {
+        for (const auto& cl : _cl) {
+            cl->watchdog_tick(_watchdog_count);
+        }
+        _watchdog_count++;
+    }
+
 public:
     context(sstring dir, directory_entry_type dtype, std::vector<job_config> req_config, unsigned duration)
             : _cl(boost::copy_range<std::vector<std::unique_ptr<class_data>>>(req_config
@@ -877,6 +915,7 @@ public:
             , _dir(dir)
             , _type(dtype)
             , _duration(duration)
+            , _watchdog([this] { watchdog_tick(); })
             , _finished(0)
     {}
 
@@ -898,6 +937,11 @@ public:
                 _finished.signal(1);
             });
         });
+    }
+
+    future<> start_watchdog(std::chrono::seconds period) {
+        _watchdog.arm_periodic(period);
+        return make_ready_future<>();
     }
 
     future<> emit_results(YAML::Emitter& out) {
@@ -940,6 +984,7 @@ int main(int ac, char** av) {
         ("duration", bpo::value<unsigned>()->default_value(10), "for how long (in seconds) to run the test")
         ("conf", bpo::value<sstring>()->default_value("./conf.yaml"), "YAML file containing benchmark specification")
         ("keep-files", bpo::value<bool>()->default_value(false), "keep test files, next run may re-use them")
+        ("watchdog-period-sec", bpo::value<unsigned>()->default_value(0), "run watchdog in the background")
     ;
 
     distributed<context> ctx;
@@ -964,6 +1009,7 @@ int main(int ac, char** av) {
             keep_files = opts["keep-files"].as<bool>();
             auto& duration = opts["duration"].as<unsigned>();
             auto& yaml = opts["conf"].as<sstring>();
+            auto wdog = std::chrono::seconds(opts["watchdog-period-sec"].as<unsigned>());
             YAML::Node doc = YAML::LoadFile(yaml);
             auto reqs = doc.as<std::vector<job_config>>();
 
@@ -1006,6 +1052,9 @@ int main(int ac, char** av) {
             engine().at_exit([&ctx] {
                 return ctx.stop();
             });
+            if (wdog.count() != 0) {
+                ctx.invoke_on_all(&context::start_watchdog, wdog).get();
+            }
             std::cout << "Creating initial files..." << std::endl;
             ctx.invoke_on_all([] (auto& c) {
                 return c.start();

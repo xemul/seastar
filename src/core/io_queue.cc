@@ -53,6 +53,37 @@ struct default_io_exception_factory {
 };
 
 struct io_group::priority_class_data {
+    using token_bucket_t = internal::shared_token_bucket<uint64_t, std::ratio<1>, internal::capped_release::no>;
+
+    /*
+     * The shift is to covert floating point size/bandwidth small number into an
+     * integer, that's then charged from the shared token bucket. This shift value
+     * is large enough to convert 512/1TB -> 1. The more "real" token value would
+     * be like 128k/100MB -> ~2M.
+     */
+    static constexpr unsigned shift = 31;
+    size_t max_bandwidth_in_blocks = std::numeric_limits<size_t>::max();
+    token_bucket_t tb;
+
+    uint64_t tokens(size_t length) const noexcept {
+        assert(length <= (1ull << (64 - (shift - io_queue::block_size_shift) - 1)));
+        return (length << (shift - io_queue::block_size_shift)) / max_bandwidth_in_blocks;
+    }
+
+    void update_bandwidth(uint64_t bandwidth) noexcept {
+        max_bandwidth_in_blocks = bandwidth >> io_queue::block_size_shift;
+    }
+
+    /*
+     * Configure fixed rate of 1 token/second. Limit should change when the bandwidth
+     * changes not to allow too intensive short spikes. For now set it to be large
+     * enough for 2M tokens for the above 128k request under 100MB/s throtting.
+     */
+    priority_class_data() noexcept
+            : tb(1ull << shift, 1ull << (shift - 8), 1ull << (shift - 12))
+    {
+        io_log.debug("Created class bandwidth token bucket, rate {} limit {} threshold {}", tb.rate(), tb.limit(), tb.threshold());
+    }
 };
 
 class io_queue::priority_class_data {
@@ -77,6 +108,18 @@ class io_queue::priority_class_data {
     io_queue::clock_type::time_point _activated;
 
     io_group::priority_class_data& _group;
+    size_t _replenish_head;
+    timer<lowres_clock> _replenish;
+
+    void try_to_replenish() noexcept {
+        _group.tb.replenish(io_queue::clock_type::now());
+        auto delta = _group.tb.deficiency(_replenish_head);
+        if (delta > 0) {
+            _replenish.arm(std::chrono::duration_cast<std::chrono::microseconds>(_group.tb.duration_for(delta)));
+        } else {
+            _queue.unthrottle_priority_class(*this);
+        }
+    }
 
 public:
     void update_shares(uint32_t shares) noexcept {
@@ -84,6 +127,8 @@ public:
     }
 
     void update_bandwidth(uint64_t bandwidth) noexcept {
+        _group.update_bandwidth(bandwidth);
+        io_log.debug("Updated {} class bandwidth to {}MB/s, tokens(128k) = {}", _pc.id(), bandwidth >> 20, _group.tokens(128 << 10));
     }
 
     priority_class_data(io_priority_class pc, uint32_t shares, io_queue& q, io_group::priority_class_data& pg)
@@ -97,6 +142,7 @@ public:
         , _total_execution_time(0)
         , _starvation_time(0)
         , _group(pg)
+        , _replenish([this] { try_to_replenish(); })
     {
     }
     priority_class_data(const priority_class_data&) = delete;
@@ -117,6 +163,15 @@ public:
         _nr_executing++;
         if (_nr_executing == 1) {
             _starvation_time += io_queue::clock_type::now() - _activated;
+        }
+
+        auto tokens = _group.tokens(dnl.length());
+        auto ph = _group.tb.grab(tokens) + tokens;
+        auto delta = _group.tb.deficiency(ph);
+        if (delta > 0) {
+            _queue.throttle_priority_class(*this);
+            _replenish_head = ph;
+            _replenish.arm(std::chrono::duration_cast<std::chrono::microseconds>(_group.tb.duration_for(delta)));
         }
     }
 

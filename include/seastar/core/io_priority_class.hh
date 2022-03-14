@@ -59,6 +59,12 @@ public:
     /// \return a future that is ready when the share update is applied
     future<> update_shares(uint32_t shares) const;
 
+    /// \brief Updates the current bandwidth for a given priority class
+    ///
+    /// \param bandwidth the new bandwidth value in bytes/second
+    /// \return a future that is ready when the bandwidth update is applied
+    future<> update_bandwidth(uint64_t bandwidth) const;
+
     /// Renames an io priority class
     ///
     /// Renames an `io_priority_class` previously created with register_one_priority_class().

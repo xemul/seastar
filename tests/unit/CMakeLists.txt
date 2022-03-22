@@ -435,6 +435,9 @@ seastar_add_test (source_location
   KIND BOOST
   SOURCES source_location_test.cc)
 
+seastar_add_test (shared_token_bucket
+  SOURCES shared_token_bucket_test.cc)
+
 function(seastar_add_certgen name)
   cmake_parse_arguments(CERT
     ""

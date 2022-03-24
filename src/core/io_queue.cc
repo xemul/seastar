@@ -515,19 +515,19 @@ future<> io_priority_class::rename(sstring new_name) noexcept {
 std::vector<seastar::metrics::impl::metric_definition_impl> io_queue::priority_class_data::metrics() {
     namespace sm = seastar::metrics;
     return std::vector<sm::impl::metric_definition_impl>({
-            sm::make_derive("total_bytes", [this] {
+            sm::make_absolute("total_bytes", [this] {
                     return _rwstat[io_direction_and_length::read_idx].bytes + _rwstat[io_direction_and_length::write_idx].bytes;
                 }, sm::description("Total bytes passed in the queue")),
-            sm::make_derive("total_operations", [this] {
+            sm::make_absolute("total_operations", [this] {
                     return _rwstat[io_direction_and_length::read_idx].ops + _rwstat[io_direction_and_length::write_idx].ops;
                 }, sm::description("Total operations passed in the queue")),
-            sm::make_derive("total_read_bytes", _rwstat[io_direction_and_length::read_idx].bytes,
+            sm::make_absolute("total_read_bytes", _rwstat[io_direction_and_length::read_idx].bytes,
                     sm::description("Total read bytes passed in the queue")),
-            sm::make_derive("total_read_ops", _rwstat[io_direction_and_length::read_idx].ops,
+            sm::make_absolute("total_read_ops", _rwstat[io_direction_and_length::read_idx].ops,
                     sm::description("Total read operations passed in the queue")),
-            sm::make_derive("total_write_bytes", _rwstat[io_direction_and_length::write_idx].bytes,
+            sm::make_absolute("total_write_bytes", _rwstat[io_direction_and_length::write_idx].bytes,
                     sm::description("Total write bytes passed in the queue")),
-            sm::make_derive("total_write_ops", _rwstat[io_direction_and_length::write_idx].ops,
+            sm::make_absolute("total_write_ops", _rwstat[io_direction_and_length::write_idx].ops,
                     sm::description("Total write operations passed in the queue")),
             sm::make_derive("total_delay_sec", [this] {
                     return _total_queue_time.count();

@@ -64,10 +64,11 @@ static std::string to_str(const seastar::metrics::impl::metric_value& v) {
     case seastar::metrics::impl::data_type::GAUGE:
         return std::to_string(v.d());
     case seastar::metrics::impl::data_type::COUNTER:
+        return std::to_string(v.i());
     case seastar::metrics::impl::data_type::ABSOLUTE:
         return std::to_string(v.ui());
     case seastar::metrics::impl::data_type::DERIVE:
-        return std::to_string(v.i());
+        return std::to_string(v.d());
     case seastar::metrics::impl::data_type::HISTOGRAM:
         break;
     }

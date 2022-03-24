@@ -252,9 +252,9 @@ namespace impl {
 
 // The value binding data types
 enum class data_type : uint8_t {
-    COUNTER, // unsigned int 64
+    COUNTER, // signed int 64
     GAUGE, // double
-    DERIVE, // signed int 64
+    DERIVE, // double
     ABSOLUTE, // unsigned int 64
     HISTOGRAM,
 };
@@ -436,6 +436,14 @@ impl::metric_definition_impl make_gauge(metric_name_type name,
     return {name, {impl::data_type::GAUGE, "gauge"}, make_function(std::forward<T>(val), impl::data_type::GAUGE), d, labels};
 }
 
+namespace {
+
+template <typename T>
+struct is_counter_metrics {
+    static constexpr bool value = std::is_integral<typename std::conditional_t<std::is_invocable<T>::value, typename std::invoke_result<T>, typename std::type_identity<T>>::type>::value;
+};
+
+}
 
 /*!
  * \brief Derive are used when a rate is more interesting than the value.
@@ -448,6 +456,10 @@ impl::metric_definition_impl make_gauge(metric_name_type name,
 template<typename T>
 impl::metric_definition_impl make_derive(metric_name_type name,
         T&& val, description d=description(), std::vector<label_instance> labels = {}) {
+    if constexpr (is_counter_metrics<typename std::remove_reference<T>::type>::value) {
+        return make_counter_fallback(std::move(name), std::forward<T>(val), std::move(d), std::move(labels));
+    }
+
     return {name, {impl::data_type::DERIVE, "derive"}, make_function(std::forward<T>(val), impl::data_type::DERIVE), d, labels};
 }
 
@@ -463,6 +475,10 @@ impl::metric_definition_impl make_derive(metric_name_type name,
 template<typename T>
 impl::metric_definition_impl make_derive(metric_name_type name, description d,
         T&& val) {
+    if constexpr (is_counter_metrics<typename std::remove_reference<T>::type>::value) {
+        return make_counter_fallback(std::move(name), std::forward<T>(val), std::move(d));
+    }
+
     return {name, {impl::data_type::DERIVE, "derive"}, make_function(std::forward<T>(val), impl::data_type::DERIVE), d, {}};
 }
 
@@ -478,6 +494,10 @@ impl::metric_definition_impl make_derive(metric_name_type name, description d,
 template<typename T>
 impl::metric_definition_impl make_derive(metric_name_type name, description d, std::vector<label_instance> labels,
         T&& val) {
+    if constexpr (is_counter_metrics<typename std::remove_reference<T>::type>::value) {
+        return make_counter_fallback(std::move(name), std::forward<T>(val), std::move(d), std::move(labels));
+    }
+
     return {name, {impl::data_type::DERIVE, "derive"}, make_function(std::forward<T>(val), impl::data_type::DERIVE), d, labels};
 }
 
@@ -491,6 +511,13 @@ impl::metric_definition_impl make_derive(metric_name_type name, description d, s
  */
 template<typename T>
 impl::metric_definition_impl make_counter(metric_name_type name,
+        T&& val, description d=description(), std::vector<label_instance> labels = {}) {
+    return {name, {impl::data_type::COUNTER, "counter"}, make_function(std::forward<T>(val), impl::data_type::COUNTER), d, labels};
+}
+
+template<typename T>
+[[deprecated("Use make_counter for non-floating point metrics")]]
+impl::metric_definition_impl make_counter_fallback(metric_name_type name,
         T&& val, description d=description(), std::vector<label_instance> labels = {}) {
     return {name, {impl::data_type::COUNTER, "counter"}, make_function(std::forward<T>(val), impl::data_type::COUNTER), d, labels};
 }
@@ -556,7 +583,7 @@ template<typename T>
 impl::metric_definition_impl make_total_bytes(metric_name_type name,
         T&& val, description d=description(), std::vector<label_instance> labels = {},
         instance_id_type instance = impl::shard()) {
-    return make_derive(name, std::forward<T>(val), d, labels).set_type("total_bytes");
+    return make_absolute(name, std::forward<T>(val), d, labels).set_type("total_bytes");
 }
 
 /*!
@@ -598,7 +625,7 @@ template<typename T>
 impl::metric_definition_impl make_total_operations(metric_name_type name,
         T&& val, description d=description(), std::vector<label_instance> labels = {},
         instance_id_type instance = impl::shard()) {
-    return make_derive(name, std::forward<T>(val), d, labels).set_type("total_operations");
+    return make_absolute(name, std::forward<T>(val), d, labels).set_type("total_operations");
 }
 
 /*! @} */

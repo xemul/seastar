@@ -215,6 +215,7 @@ struct cpwriter {
                 break;
             }
             case data_type::COUNTER:
+            case data_type::REAL_COUNTER:
                 write(v.i()); // signed int 64, big endian
                 break;
             default:

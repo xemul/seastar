@@ -214,12 +214,8 @@ struct cpwriter {
                 write_le(tmpi);
                 break;
             }
-            case data_type::DERIVE:
-                write(v.i()); // signed int 64, big endian
-                break;
             case data_type::COUNTER:
-            case data_type::ABSOLUTE:
-                write(v.ui()); // unsigned int 64, big endian
+                write(v.i()); // signed int 64, big endian
                 break;
             default:
                 assert(0);

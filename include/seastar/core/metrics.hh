@@ -496,6 +496,30 @@ impl::metric_definition_impl make_counter(metric_name_type name,
 }
 
 /*!
+ * \brief create a counter metric
+ *
+ * Counters are similar to derived, but they assume monotony, so if a counter value decrease in a series it is count as a wrap-around.
+ * It is better to use large enough data value than to use counter.
+ *
+ */
+template<typename T>
+impl::metric_definition_impl make_counter(metric_name_type name, description d, T&& val) {
+    return make_counter(std::move(name), std::forward<T>(val), std::move(d), {});
+}
+
+/*!
+ * \brief create a counter metric
+ *
+ * Counters are similar to derived, but they assume monotony, so if a counter value decrease in a series it is count as a wrap-around.
+ * It is better to use large enough data value than to use counter.
+ *
+ */
+template<typename T>
+impl::metric_definition_impl make_counter(metric_name_type name, description d, std::vector<label_instance> labels, T&& val) {
+    return make_counter(std::move(name), std::forward<T>(val), std::move(d), std::move(labels));
+}
+
+/*!
  * \brief create an absolute metric.
  *
  * Absolute are used for metric that are being erased after each time they are read.
@@ -556,7 +580,7 @@ template<typename T>
 impl::metric_definition_impl make_total_bytes(metric_name_type name,
         T&& val, description d=description(), std::vector<label_instance> labels = {},
         instance_id_type instance = impl::shard()) {
-    return make_derive(name, std::forward<T>(val), d, labels).set_type("total_bytes");
+    return make_counter(name, std::forward<T>(val), d, labels).set_type("total_bytes");
 }
 
 /*!
@@ -598,7 +622,7 @@ template<typename T>
 impl::metric_definition_impl make_total_operations(metric_name_type name,
         T&& val, description d=description(), std::vector<label_instance> labels = {},
         instance_id_type instance = impl::shard()) {
-    return make_derive(name, std::forward<T>(val), d, labels).set_type("total_operations");
+    return make_counter(name, std::forward<T>(val), d, labels).set_type("total_operations");
 }
 
 /*! @} */

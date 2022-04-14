@@ -3915,6 +3915,10 @@ void smp::configure(const smp_options& smp_opts, const reactor_options& reactor_
 
     if (smp_opts.cpuset) {
         cpu_set = smp_opts.cpuset.get_value();
+    } else {
+        cpu_set = get_current_cpuset();
+    }
+
         if (cgroup_cpu_set && *cgroup_cpu_set != cpu_set) {
             // CPUs that are not available are those pinned by
             // --cpuset but not by cgroups, if mounted.
@@ -3932,9 +3936,6 @@ void smp::configure(const smp_options& smp_opts, const reactor_options& reactor_
                 exit(1);
             }
         }
-    } else if (cgroup_cpu_set) {
-        cpu_set = *cgroup_cpu_set;
-    }
 
     if (smp_opts.smp) {
         nr_cpus = smp_opts.smp.get_value();

@@ -3919,23 +3919,23 @@ void smp::configure(const smp_options& smp_opts, const reactor_options& reactor_
         cpu_set = get_current_cpuset();
     }
 
-        if (cgroup_cpu_set && *cgroup_cpu_set != cpu_set) {
-            // CPUs that are not available are those pinned by
-            // --cpuset but not by cgroups, if mounted.
-            std::set<unsigned int> not_available_cpus;
-            std::set_difference(cpu_set.begin(), cpu_set.end(),
-                                cgroup_cpu_set->begin(), cgroup_cpu_set->end(),
-                                std::inserter(not_available_cpus, not_available_cpus.end()));
+    if (cgroup_cpu_set && *cgroup_cpu_set != cpu_set) {
+        // CPUs that are not available are those pinned by
+        // --cpuset but not by cgroups, if mounted.
+        std::set<unsigned int> not_available_cpus;
+        std::set_difference(cpu_set.begin(), cpu_set.end(),
+                            cgroup_cpu_set->begin(), cgroup_cpu_set->end(),
+                            std::inserter(not_available_cpus, not_available_cpus.end()));
 
-            if (!not_available_cpus.empty()) {
-                std::ostringstream not_available_cpus_list;
-                for (auto cpu_id : not_available_cpus) {
-                    not_available_cpus_list << " " << cpu_id;
-                }
-                seastar_logger.error("Bad value for --cpuset:{} not allowed. Shutting down.", not_available_cpus_list.str());
-                exit(1);
+        if (!not_available_cpus.empty()) {
+            std::ostringstream not_available_cpus_list;
+            for (auto cpu_id : not_available_cpus) {
+                not_available_cpus_list << " " << cpu_id;
             }
+            seastar_logger.error("Bad value for --cpuset:{} not allowed. Shutting down.", not_available_cpus_list.str());
+            exit(1);
         }
+    }
 
     if (smp_opts.smp) {
         nr_cpus = smp_opts.smp.get_value();

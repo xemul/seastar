@@ -326,7 +326,7 @@ public:
             [this, &func] (unsigned c) mutable {
                 return smp::submit_to(c, [this, func] () mutable {
                     auto inst = get_local_service();
-                    return func(*inst);
+                    return std::invoke(func, *inst);
                 });
             }, std::forward<Reducer>(r));
     }
@@ -341,7 +341,7 @@ public:
             [this, &func] (unsigned c) {
                 return smp::submit_to(c, [this, func] () {
                     auto inst = get_local_service();
-                    return func(*inst);
+                    return std::invoke(func, *inst);
                 });
             }, std::forward<Reducer>(r));
     }

@@ -177,6 +177,9 @@ struct cancellable {
     }
     ~cancellable() {
         cancel();
+        if (send_back_pointer) {
+            *send_back_pointer = nullptr;
+        }
     }
 };
 

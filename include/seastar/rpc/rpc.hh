@@ -242,29 +242,26 @@ protected:
     void* _serializer;
     struct outgoing_entry {
         timer<rpc_clock_type> t;
+        abort_source as;
         snd_buf buf;
-        std::optional<promise<>> p = promise<>();
         cancellable* pcancel = nullptr;
         outgoing_entry(snd_buf b) : buf(std::move(b)) {}
-        outgoing_entry(outgoing_entry&& o) noexcept : t(std::move(o.t)), buf(std::move(o.buf)), p(std::move(o.p)), pcancel(std::exchange(o.pcancel, nullptr)) {
-            o.p = std::nullopt;
+        outgoing_entry(outgoing_entry&& o) noexcept : t(std::move(o.t)), as(std::move(as)), buf(std::move(o.buf)), pcancel(std::exchange(o.pcancel, nullptr)) {
             if (pcancel) {
                 pcancel->send_back_pointer = &pcancel;
             }
         }
         ~outgoing_entry() {
-            if (p) {
                 if (pcancel) {
                     pcancel->cancel_send = std::function<void()>();
                     pcancel->send_back_pointer = nullptr;
                 }
-                p->set_value();
-            }
         }
     };
     friend outgoing_entry;
     std::list<outgoing_entry> _outgoing_queue;
     condition_variable _outgoing_queue_cond;
+    rpc_semaphore _outgoing_sem = rpc_semaphore(0);
     future<> _send_loop_stopped = make_ready_future<>();
     std::unique_ptr<compressor> _compressor;
     bool _propagate_timeout = false;
@@ -283,10 +280,11 @@ protected:
     future<bool> _sink_closed_future = make_ready_future<bool>(false);
 
     size_t outgoing_queue_length() const noexcept {
-        return _outgoing_queue.size();
+        return _outgoing_sem.waiters();
     }
 
     void set_negotiated() noexcept {
+        _outgoing_sem.signal(1);
         _negotiated = true;
     }
 
@@ -298,7 +296,7 @@ protected:
     future<> send_buffer(snd_buf buf);
 
     void send_loop();
-    future<> send_entry(outgoing_entry d);
+    future<> send_entry(outgoing_entry& d);
     future<> stop_send_loop();
     future<std::optional<rcv_buf>>  read_stream_frame_compressed(input_stream<char>& in);
     bool stream_check_twoway_closed() const noexcept {
@@ -368,10 +366,11 @@ public:
     friend class source_impl;
 
     future<> suspend_for_testing() {
-        return make_ready_future<>();
+        return _outgoing_sem.wait(1);
     }
 
     void resume_for_testing() {
+        _outgoing_sem.signal(1);
     }
 };
 

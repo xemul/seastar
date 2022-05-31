@@ -129,7 +129,14 @@ namespace rpc {
       }
   }
 
-  future<> connection::send_entry(outgoing_entry d) {
+  future<> connection::send_entry(std::unique_ptr<std::optional<outgoing_entry>> p) {
+      return get_units(_outgoing_sem, 1).then([this, p = std::move(p)] (auto su) mutable {
+          if (!*p) {
+              // canceled or timed-out
+              return make_ready_future<>();
+          }
+
+          auto& d = **p;
           d.t.cancel(); // cancel timeout timer
           if (d.pcancel) {
               d.pcancel->cancel_send = std::function<void()>(); // request is no longer cancellable
@@ -153,7 +160,10 @@ namespace rpc {
               _stats.sent_messages++;
               return _write_buf.flush();
           });
-          return f.finally([d = std::move(d)] {});
+          return f.finally([su = std::move(su)] {});
+      }).handle_exception([this] (std::exception_ptr eptr) {
+          _error = true;
+      });
   }
 
   void connection::send_loop() {
@@ -167,7 +177,7 @@ namespace rpc {
               }
               auto d = std::move(_outgoing_queue.front());
               _outgoing_queue.pop_front();
-              return send_entry(std::move(d));
+              return make_ready_future<>();
           });
       }).handle_exception([this] (std::exception_ptr eptr) {
           _error = true;
@@ -180,11 +190,15 @@ namespace rpc {
           _outgoing_queue_cond.broken();
           _fd.shutdown_output();
       }
+      return _outgoing_sem.broken_and_wait(_negotiated ? 1 : 0).then([this] {
+
       return when_all(std::move(_send_loop_stopped), std::move(_sink_closed_future)).then([this] (std::tuple<future<>, future<bool>> res){
           _outgoing_queue.clear();
           // both _send_loop_stopped and _sink_closed_future are never exceptional
           bool sink_closed = std::get<1>(res).get0();
           return _connected && !sink_closed ? _write_buf.close() : make_ready_future();
+      });
+
       });
   }
 
@@ -228,11 +242,9 @@ namespace rpc {
           if (timeout && *timeout <= rpc_clock_type::now()) {
               return make_ready_future<>();
           }
-          _outgoing_queue.emplace_back(std::move(buf));
-          auto deleter = [this, it = std::prev(_outgoing_queue.cend())] {
-              _outgoing_queue.erase(it);
-          };
-          auto& d = _outgoing_queue.back();
+          auto p = std::make_unique<std::optional<outgoing_entry>>(std::move(buf));
+          auto deleter = [&d = *p] { d.reset(); };
+          auto& d = **p;
 
           if (timeout) {
               auto& t = d.t;
@@ -244,8 +256,7 @@ namespace rpc {
               cancel->send_back_pointer = &d.pcancel;
               d.pcancel = cancel;
           }
-          _outgoing_queue_cond.signal();
-          return _outgoing_queue.back().p->get_future();
+          return send_entry(std::move(p));
       } else {
           return make_exception_future<>(closed_error());
       }

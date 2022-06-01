@@ -320,9 +320,6 @@ public:
     ///
     /// \param nr Number of units to deposit (default 1).
     void signal(size_t nr = 1) noexcept {
-        if (_ex) {
-            return;
-        }
         _count += nr;
         while (!_wait_list.empty() && has_available_units(_wait_list.front().nr)) {
             auto& x = _wait_list.front();
@@ -420,7 +417,41 @@ public:
         break_waiters(ex);
     }
 
-    /// Reserve memory for waiters so that wait() will not throw.
+    /// Signal to waiters that an error occurred and wait for the specified
+    /// number of units to become available.
+    ///
+    /// Breakage is done the same as as regular \ref broken() does. The caller
+    /// of this is recommended to call \ref ensure_space_for_waiters() in
+    /// advance not to get exceptional future.
+    future<> break_and_wait(size_t nr = 1) noexcept {
+        return break_and_wait_ex(nr, make_broken_exception());
+    }
+
+    /// Signal to waiters that an error occurred and wait for the specified
+    /// number of units to become available.
+    ///
+    /// Breakage is done the same as as regular \ref broken() does. The caller
+    /// of this is recommended to call \ref ensure_space_for_waiters() in
+    /// advance not to get exceptional future.
+    template <typename Exception>
+    future<> break_and_wait(size_t nr, const Exception& ex) noexcept {
+        return break_and_wait_ex(nr, std::make_exception_ptr(ex));
+    }
+
+    /// Signal to waiters that an error occurred and wait for the specified
+    /// number of units to become available.
+    ///
+    /// Breakage is done the same as as regular \ref broken() does. The caller
+    /// of this is recommended to call \ref ensure_space_for_waiters() in
+    /// advance not to get exceptional future.
+    future<> break_and_wait_ex(size_t nr, std::exception_ptr ex) noexcept {
+        break_waiters(ex);
+        auto f = wait(nr);
+        _ex = std::move(ex);
+        return f;
+    }
+
+    /// Reserve memory for waiters so that wait()/break_and_wait() will not throw.
     void ensure_space_for_waiters(size_t n) {
         _wait_list.reserve(n);
     }

@@ -157,12 +157,10 @@ namespace rpc {
           _fd.shutdown_output();
       }
       return _outgoing_sem.broken_and_wait(_negotiated ? 1 : 0).then([this] {
-
-      return std::move(_sink_closed_future).then([this] (bool sink_closed) {
-          // _sink_closed_future is never exceptional
-          return _connected && !sink_closed ? _write_buf.close() : make_ready_future();
-      });
-
+          return std::move(_sink_closed_future).then([this] (bool sink_closed) {
+              // _sink_closed_future is never exceptional
+              return _connected && !sink_closed ? _write_buf.close() : make_ready_future();
+          });
       });
   }
 

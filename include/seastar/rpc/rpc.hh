@@ -252,10 +252,10 @@ protected:
             }
         }
         ~outgoing_entry() {
-                if (pcancel) {
-                    pcancel->cancel_send = std::function<void()>();
-                    pcancel->send_back_pointer = nullptr;
-                }
+            if (pcancel) {
+                pcancel->cancel_send = std::function<void()>();
+                pcancel->send_back_pointer = nullptr;
+            }
         }
     };
     friend outgoing_entry;

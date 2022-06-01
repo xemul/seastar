@@ -259,10 +259,7 @@ protected:
         }
     };
     friend outgoing_entry;
-    std::list<outgoing_entry> _outgoing_queue;
-    condition_variable _outgoing_queue_cond;
     rpc_semaphore _outgoing_sem = rpc_semaphore(0);
-    future<> _send_loop_stopped = make_ready_future<>();
     std::unique_ptr<compressor> _compressor;
     bool _propagate_timeout = false;
     bool _timeout_negotiated = false;
@@ -295,7 +292,6 @@ protected:
     snd_buf compress(snd_buf buf);
     future<> send_buffer(snd_buf buf);
 
-    void send_loop();
     future<> send_entry(outgoing_entry& d);
     future<> stop_send_loop();
     future<std::optional<rcv_buf>>  read_stream_frame_compressed(input_stream<char>& in);

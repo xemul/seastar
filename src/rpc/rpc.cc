@@ -151,40 +151,15 @@ namespace rpc {
       });
   }
 
-  void connection::send_loop() {
-      _send_loop_stopped = do_until([this] { return _error; }, [this] {
-          return _outgoing_queue_cond.wait([this] { return !_outgoing_queue.empty(); }).then([this] {
-              // despite using wait with predicated above _outgoing_queue can still be empty here if
-              // there is only one entry on the list and its expire timer runs after wait() returned ready future,
-              // but before this continuation runs.
-              if (_outgoing_queue.empty()) {
-                  return make_ready_future();
-              }
-              auto d = std::move(_outgoing_queue.front());
-              _outgoing_queue.pop_front();
-              d.t.cancel(); // cancel timeout timer
-              if (d.pcancel) {
-                  d.pcancel->cancel_send = std::function<void()>(); // request is no longer cancellable
-              }
-              return make_ready_future<>();
-          });
-      }).handle_exception([this] (std::exception_ptr eptr) {
-          _error = true;
-      });
-  }
-
   future<> connection::stop_send_loop() {
       _error = true;
       if (_connected) {
-          _outgoing_queue_cond.broken();
           _fd.shutdown_output();
       }
       return _outgoing_sem.broken_and_wait(_negotiated ? 1 : 0).then([this] {
 
-      return when_all(std::move(_send_loop_stopped), std::move(_sink_closed_future)).then([this] (std::tuple<future<>, future<bool>> res){
-          _outgoing_queue.clear();
-          // both _send_loop_stopped and _sink_closed_future are never exceptional
-          bool sink_closed = std::get<1>(res).get0();
+      return std::move(_sink_closed_future).then([this] (bool sink_closed) {
+          // _sink_closed_future is never exceptional
           return _connected && !sink_closed ? _write_buf.close() : make_ready_future();
       });
 
@@ -703,7 +678,6 @@ namespace rpc {
               _client_negotiated = std::nullopt;
               _propagate_timeout = !is_stream();
               set_negotiated();
-              send_loop();
               return do_until([this] { return _read_buf.eof() || _error; }, [this] () mutable {
                   if (is_stream()) {
                       return handle_stream_frame();
@@ -944,7 +918,6 @@ future<> server::connection::send_unknown_verb_reply(std::optional<rpc_clock_typ
         auto sg = _isolation_config ? _isolation_config->sched_group : current_scheduling_group();
         return with_scheduling_group(sg, [this] {
           set_negotiated();
-          send_loop();
           return do_until([this] { return _read_buf.eof() || _error; }, [this] () mutable {
               if (is_stream()) {
                   return handle_stream_frame();

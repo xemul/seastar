@@ -173,6 +173,46 @@ SEASTAR_THREAD_TEST_CASE(test_non_default_broken_semaphore) {
     BOOST_REQUIRE_THROW(sem.wait().get(), std::runtime_error);
 }
 
+SEASTAR_THREAD_TEST_CASE(test_wait_broken_locked_semaphore) {
+    auto sem = semaphore(1);
+    sem.wait().get();
+
+    auto fut_w = sem.wait();
+    BOOST_REQUIRE(!fut_w.available());
+    auto fut_b = sem.broken_and_wait(1);
+    BOOST_REQUIRE(!fut_b.available());
+    BOOST_REQUIRE_EQUAL(sem.waiters(), 1u);
+
+    BOOST_REQUIRE_THROW(fut_w.get(), broken_semaphore);
+    BOOST_REQUIRE_THROW(sem.wait().get(), broken_semaphore);
+
+    sem.signal();
+
+    try {
+        fut_b.get();
+    } catch (...) {
+        BOOST_FAIL("unexpected exception");
+    }
+
+    // Make sure semaphore is _still_ broken
+    BOOST_REQUIRE_THROW(sem.wait().get(), broken_semaphore);
+}
+
+SEASTAR_THREAD_TEST_CASE(test_wait_broken_unlocked_semaphore) {
+    auto sem = semaphore(1);
+
+    auto fut_b = sem.broken_and_wait(1);
+    BOOST_REQUIRE_THROW(sem.wait().get(), broken_semaphore);
+
+    try {
+        fut_b.get();
+    } catch (...) {
+        BOOST_FAIL("unexpected exception");
+    }
+
+    BOOST_REQUIRE_THROW(sem.wait().get(), broken_semaphore);
+}
+
 SEASTAR_TEST_CASE(test_shared_mutex_exclusive) {
     return do_with(shared_mutex(), unsigned(0), [] (shared_mutex& sm, unsigned& counter) {
         return parallel_for_each(boost::irange(0, 10), [&sm, &counter] (int idx) {

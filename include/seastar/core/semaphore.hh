@@ -321,7 +321,7 @@ public:
     /// \param nr Number of units to deposit (default 1).
     void signal(size_t nr = 1) noexcept {
         if (_ex) {
-            return;
+            assert(_wait_list.size() <= 1);
         }
         _count += nr;
         while (!_wait_list.empty() && has_available_units(_wait_list.front().nr)) {
@@ -420,7 +420,35 @@ public:
         break_waiters(ex);
     }
 
-    /// Reserve memory for waiters so that wait() will not throw.
+    /// Signal to waiters that an error occurred and waits for the available
+    /// units to. Breakage is done the same as as regular \ref broken() does.
+    /// The caller of this is recommended to call \ref ensure_space_for_waiters()
+    /// in advance not to get exceptional future.
+    future<> broken_and_wait(size_t nr = 1) noexcept {
+        return broken_and_wait(nr, make_broken_exception());
+    }
+
+    /// Signal to waiters that an error occurred and waits for the available
+    /// units to. Breakage is done the same as as regular \ref broken() does.
+    /// The caller of this is recommended to call \ref ensure_space_for_waiters()
+    /// in advance not to get exceptional future.
+    template <typename Exception>
+    future<> broken_and_wait(size_t nr, const Exception& ex) noexcept {
+        return broken(nr, std::make_exception_ptr(ex));
+    }
+
+    /// Signal to waiters that an error occurred and waits for the available
+    /// units to. Breakage is done the same as as regular \ref broken() does.
+    /// The caller of this is recommended to call \ref ensure_space_for_waiters()
+    /// in advance not to get exceptional future.
+    future<> broken_and_wait(size_t nr, std::exception_ptr ex) noexcept {
+        break_waiters(ex);
+        auto f = wait(nr);
+        _ex = ex;
+        return f;
+    }
+
+    /// Reserve memory for waiters so that wait()/broken_and_wait() will not throw.
     void ensure_space_for_waiters(size_t n) {
         _wait_list.reserve(n);
     }

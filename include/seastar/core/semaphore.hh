@@ -378,10 +378,10 @@ public:
     /// Returns the current number of waiters
     size_t waiters() const noexcept { return _wait_list.size(); }
 
-    /// Signal to waiters that an error occurred.  \ref wait() will see
-    /// an exceptional future<> containing a \ref broken_semaphore exception.
-    /// The future is made available immediately.
-    void broken() noexcept {
+private:
+    void break_waiters(std::exception_ptr xp) noexcept;
+
+    std::exception_ptr make_broken_exception() noexcept {
         std::exception_ptr ep;
         if constexpr (internal::has_broken<exception_factory>::value) {
             try {
@@ -392,7 +392,15 @@ public:
         } else {
             ep = std::make_exception_ptr(broken_semaphore());
         }
-        broken(std::move(ep));
+        return ep;
+    }
+
+public:
+    /// Signal to waiters that an error occurred.  \ref wait() will see
+    /// an exceptional future<> containing a \ref broken_semaphore exception.
+    /// The future is made available immediately.
+    void broken() noexcept {
+        broken(make_broken_exception());
     }
 
     /// Signal to waiters that an error occurred.  \ref wait() will see
@@ -406,7 +414,11 @@ public:
     /// Signal to waiters that an error occurred.  \ref wait() will see
     /// an exceptional future<> containing the provided exception parameter.
     /// The future is made available immediately.
-    void broken(std::exception_ptr ex) noexcept;
+    void broken(std::exception_ptr ex) noexcept {
+        _ex = ex;
+        _count = 0;
+        break_waiters(ex);
+    }
 
     /// Reserve memory for waiters so that wait() will not throw.
     void ensure_space_for_waiters(size_t n) {
@@ -417,10 +429,8 @@ public:
 template<typename ExceptionFactory, typename Clock>
 inline
 void
-basic_semaphore<ExceptionFactory, Clock>::broken(std::exception_ptr xp) noexcept {
+basic_semaphore<ExceptionFactory, Clock>::break_waiters(std::exception_ptr xp) noexcept {
     static_assert(std::is_nothrow_copy_constructible_v<std::exception_ptr>);
-    _ex = xp;
-    _count = 0;
     while (!_wait_list.empty()) {
         auto& x = _wait_list.front();
         x.pr.set_exception(xp);

@@ -361,6 +361,13 @@ public:
     friend class sink_impl;
     template<typename Serializer, typename... In>
     friend class source_impl;
+
+    future<> suspend_for_testing() {
+        return make_ready_future<>();
+    }
+
+    void resume_for_testing() {
+    }
 };
 
 struct deferred_snd_buf {

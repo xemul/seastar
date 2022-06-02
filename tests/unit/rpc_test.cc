@@ -385,9 +385,11 @@ SEASTAR_TEST_CASE(test_rpc_cancel) {
         }).get();
         auto call = env.proto().make_client<void ()>(1);
         rpc::cancellable cancel;
+        c1.suspend_for_testing().get();
         auto f = call(c1, cancel);
         // cancel send side
         cancel.cancel();
+        c1.resume_for_testing();
         try {
             f.get();
         } catch(rpc::canceled_error&) {

@@ -233,6 +233,7 @@ protected:
     output_stream<char> _write_buf;
     bool _error = false;
     bool _connected = false;
+    bool _negotiated = false;
     promise<> _stopped;
     stats _stats;
     const logger& _logger;
@@ -283,6 +284,10 @@ protected:
 
     size_t outgoing_queue_length() const noexcept {
         return _outgoing_queue.size();
+    }
+
+    void set_negotiated() noexcept {
+        _negotiated = true;
     }
 
     bool is_stream() const noexcept {

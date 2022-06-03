@@ -684,6 +684,7 @@ namespace rpc {
               _client_negotiated->set_value();
               _client_negotiated = std::nullopt;
               _propagate_timeout = !is_stream();
+              set_negotiated();
               send_loop();
               return do_until([this] { return _read_buf.eof() || _error; }, [this] () mutable {
                   if (is_stream()) {
@@ -924,6 +925,7 @@ future<> server::connection::send_unknown_verb_reply(std::optional<rpc_clock_typ
       return negotiate_protocol(_read_buf).then([this] () mutable {
         auto sg = _isolation_config ? _isolation_config->sched_group : current_scheduling_group();
         return with_scheduling_group(sg, [this] {
+          set_negotiated();
           send_loop();
           return do_until([this] { return _read_buf.eof() || _error; }, [this] () mutable {
               if (is_stream()) {

@@ -286,6 +286,8 @@ protected:
         return _outgoing_queue.size();
     }
 
+    void set_negotiated() noexcept;
+
     bool is_stream() const noexcept {
         return _is_stream;
     }

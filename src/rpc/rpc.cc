@@ -170,6 +170,10 @@ namespace rpc {
       });
   }
 
+  void connection::set_negotiated() noexcept {
+      send_loop();
+  }
+
   future<> connection::stop_send_loop() {
       _error = true;
       if (_connected) {
@@ -684,7 +688,7 @@ namespace rpc {
               _client_negotiated->set_value();
               _client_negotiated = std::nullopt;
               _propagate_timeout = !is_stream();
-              send_loop();
+              set_negotiated();
               return do_until([this] { return _read_buf.eof() || _error; }, [this] () mutable {
                   if (is_stream()) {
                       return handle_stream_frame();
@@ -939,7 +943,7 @@ future<> server::connection::send_unknown_verb_reply(std::optional<rpc_clock_typ
       return negotiate_protocol(_read_buf).then([this] () mutable {
         auto sg = _isolation_config ? _isolation_config->sched_group : current_scheduling_group();
         return with_scheduling_group(sg, [this] {
-          send_loop();
+          set_negotiated();
           return do_until([this] { return _read_buf.eof() || _error; }, [this] () mutable {
               if (is_stream()) {
                   return handle_stream_frame();

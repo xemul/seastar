@@ -38,6 +38,7 @@ SEASTAR_TEST_CASE(test_abort_source_notifies_subscriber) {
     as.request_abort();
     BOOST_REQUIRE_EQUAL(true, signalled);
     BOOST_REQUIRE_EQUAL(false, bool(st_opt));
+    BOOST_REQUIRE_THROW(as.check(), abort_requested_exception);
     return make_ready_future<>();
 }
 
@@ -84,4 +85,24 @@ SEASTAR_TEST_CASE(test_negative_sleep_abortable) {
     return do_with(abort_source(), [] (abort_source& as) {
         return sleep_abortable(-10s, as);
     });
+}
+
+SEASTAR_TEST_CASE(test_request_abort_with_exception) {
+    std::exception_ptr aborted_ex;
+    auto as = abort_source();
+    auto st_opt = as.subscribe([&aborted_ex] (std::exception_ptr ex) noexcept {
+        aborted_ex = std::move(ex);
+    });
+    auto expected_message = "expected";
+    as.request_abort(std::runtime_error(expected_message));
+    bool caught_exception = false;
+    try {
+        std::rethrow_exception(aborted_ex);
+    } catch (const std::runtime_error& e) {
+        BOOST_REQUIRE_EQUAL(e.what(), expected_message);
+        caught_exception = true;
+    }
+    BOOST_REQUIRE(caught_exception);
+    BOOST_REQUIRE_THROW(as.check(), std::runtime_error);
+    return make_ready_future<>();
 }

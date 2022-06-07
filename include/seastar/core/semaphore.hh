@@ -543,6 +543,11 @@ public:
     size_t count() const noexcept {
         return _n;
     }
+
+    /// Checks if the units are (dis)engaged, i.e. will (not) be returned to some semaphore
+    explicit operator bool() const noexcept {
+        return _sem != nullptr;
+    }
 };
 
 /// \brief Take units from semaphore temporarily
@@ -638,6 +643,38 @@ future<semaphore_units<ExceptionFactory, Clock>>
 get_units(basic_semaphore<ExceptionFactory, Clock>& sem, size_t units, abort_source& as) noexcept {
     return sem.wait(as, units).then([&sem, units] {
         return semaphore_units<ExceptionFactory, Clock>{ sem, units };
+    });
+}
+
+/// \brief Take units from semaphore temporarily with an \ref abort_source
+///
+/// Like \ref get_units(basic_semaphore<ExceptionFactory>&, size_t, abort_source&) but
+/// returns ready future with disengaged units if the semaphore was aborted
+///
+/// \param sem The semaphore to take units from
+/// \param units  Number of units to take
+/// \param as abort source.
+/// \return a \ref future<> holding \ref semaphore_units object. When the object goes out of scope
+///         the units are returned to the semaphore.
+///         If get_units is aborted before units are granted, returns a future holding disengaged
+///         units that are not returned to anywhere
+///
+/// \note The caller must guarantee that \c sem is valid as long as
+///      \ref seaphore_units object is alive.
+///
+/// \related semaphore
+template<typename ExceptionFactory, typename Clock>
+future<semaphore_units<ExceptionFactory, Clock>>
+get_units_abortable(basic_semaphore<ExceptionFactory, Clock>& sem, size_t units, abort_source& as) noexcept {
+    return sem.wait(as, units).then_wrapped([&sem, units] (auto f) {
+        try {
+            f.get();
+        } catch (const semaphore_aborted&) {
+            return make_ready_future<semaphore_units<ExceptionFactory, Clock>>();
+        } catch (...) {
+            return current_exception_as_future<semaphore_units<ExceptionFactory, Clock>>();
+        }
+        return make_ready_future<semaphore_units<ExceptionFactory, Clock>>(sem, units);
     });
 }
 

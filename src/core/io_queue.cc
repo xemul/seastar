@@ -845,44 +845,31 @@ future<size_t> io_queue::queue_one_request(const io_priority_class& pc, io_direc
     });
 }
 
-future<size_t> io_queue::queue_request(const io_priority_class& pc, io_direction_and_length dnl, internal::io_request req, io_intent* intent, iovec_keeper iovs) noexcept {
-    size_t max_length = _group->_max_request_length[dnl.rw_idx()];
-
-    if (__builtin_expect(dnl.length() <= max_length, true)) {
-        return queue_one_request(pc, dnl, std::move(req), intent, std::move(iovs));
+static future<size_t> collect_completed_parts(size_t max_length, shared_ptr<std::vector<future<size_t>>> futures) {
+    int nr = 0;
+    for (auto&& res : *futures) {
+        if (__builtin_expect(!res.available(), false)) {
+            // Shouldn't happen -- last request is executed last, all the
+            // previous must be available. But just in case...
+            return res.then_wrapped([nr, max_length, futures] (auto res) {
+                (*futures)[nr] = std::move(res);
+                return collect_completed_parts(max_length, std::move(futures));
+            });
+        }
+        nr++;
     }
 
-    std::vector<internal::io_request::part> parts;
-    shared_ptr<std::vector<future<size_t>>> p;
+    nr = 0;
+    bool prev_ok = true;
+    size_t total = 0 ;
+    std::exception_ptr ex;
 
-    try {
-        parts = req.split(max_length);
-        p = make_shared<std::vector<future<size_t>>>();
-        p->reserve(parts.size());
-    } catch (...) {
-        return current_exception_as_future<size_t>();
-    }
-
-    engine()._io_stats.aio_splits++;
-    // No exceptions from now on. If queue_one_request fails it will resolve
-    // into exceptional future which will be picked up by when_all() below
-    for (auto&& part : parts) {
-        auto f = queue_one_request(pc, io_direction_and_length(dnl.rw_idx(), part.size), std::move(part.req), intent, std::move(part.iovecs));
-        p->push_back(std::move(f));
-    }
-
-    return when_all(p->begin(), p->end()).then([p, max_length] (auto results) {
-        bool prev_ok = true;
-        size_t total = 0;
-        std::exception_ptr ex;
-
-        for (auto&& res : results) {
-            if (!res.failed()) {
-                if (prev_ok) {
-                    size_t sz = res.get0();
-                    total += sz;
-                    prev_ok &= (sz == max_length);
-                }
+    for (auto&& res : *futures) {
+        if (!res.failed()) {
+            if (prev_ok) {
+                size_t sz = res.get0();
+                total += sz;
+                prev_ok &= (sz == max_length);
             } else {
                 if (!ex) {
                     ex = res.get_exception();
@@ -892,14 +879,46 @@ future<size_t> io_queue::queue_request(const io_priority_class& pc, io_direction
                 prev_ok = false;
             }
         }
+    }
 
-        if (total > 0) {
-            return make_ready_future<size_t>(total);
-        } else if (ex) {
-            return make_exception_future<size_t>(std::move(ex));
-        } else {
-            return make_ready_future<size_t>(0);
-        }
+    if (total > 0) {
+        return make_ready_future<size_t>(total);
+    } else if (ex) {
+        return make_exception_future<size_t>(std::move(ex));
+    } else {
+        return make_ready_future<size_t>(0);
+    }
+}
+
+future<size_t> io_queue::queue_request(const io_priority_class& pc, io_direction_and_length dnl, internal::io_request req, io_intent* intent, iovec_keeper iovs) noexcept {
+    size_t max_length = _group->_max_request_length[dnl.rw_idx()];
+
+    if (__builtin_expect(dnl.length() <= max_length, true)) {
+        return queue_one_request(pc, dnl, std::move(req), intent, std::move(iovs));
+    }
+
+    std::vector<internal::io_request::part> parts;
+    shared_ptr<std::vector<future<size_t>>> futures;
+
+    try {
+        parts = req.split(max_length);
+        futures = make_shared<std::vector<future<size_t>>>();
+        futures->reserve(parts.size());
+    } catch (...) {
+        return current_exception_as_future<size_t>();
+    }
+
+    engine()._io_stats.aio_splits++;
+    // No exceptions from now on. If queue_one_request fails it will resolve
+    // into exceptional future which will be picked up by when_all() below
+    for (auto&& part : parts) {
+        auto f = queue_one_request(pc, io_direction_and_length(dnl.rw_idx(), part.size), std::move(part.req), intent, std::move(part.iovecs));
+        futures->push_back(std::move(f));
+    }
+
+    return futures->back().then_wrapped([futures, max_length] (auto last_res) {
+        (*futures)[futures->size() - 1] = std::move(last_res);
+        return collect_completed_parts(max_length, std::move(futures));
     });
 }
 

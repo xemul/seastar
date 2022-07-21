@@ -863,6 +863,7 @@ future<size_t> io_queue::queue_request(const io_priority_class& pc, io_direction
         return current_exception_as_future<size_t>();
     }
 
+    engine()._io_stats.aio_splits++;
     // No exceptions from now on. If queue_one_request fails it will resolve
     // into exceptional future which will be picked up by when_all() below
     for (auto&& part : parts) {

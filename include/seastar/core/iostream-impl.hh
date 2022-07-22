@@ -80,7 +80,7 @@ output_stream<CharType>::zero_copy_put(net::packet p) noexcept {
     _flush = false;
     if (_flushing) {
         // flush in progress, wait for it to end before continuing
-        return _in_batch.value().get_future().then([this, p = std::move(p)] () mutable {
+        return _in_batch.value().get_shared_future().then([this, p = std::move(p)] () mutable {
             return _fd.put(std::move(p));
         });
     } else {
@@ -422,6 +422,8 @@ output_stream<CharType>::flush() noexcept {
             return zero_copy_put(std::move(_zc_bufs)).then([this] {
                 return _fd.flush();
             });
+        } else {
+            return make_ready_future<>();
         }
     } else {
         if (_ex) {
@@ -431,11 +433,11 @@ output_stream<CharType>::flush() noexcept {
             _flush = true;
             if (!_in_batch) {
                 add_to_flush_poller(this);
-                _in_batch = promise<>();
+                _in_batch = shared_promise<>();
             }
+            return _in_batch.value().get_shared_future();
         }
     }
-    return make_ready_future<>();
 }
 
 void add_to_flush_poller(output_stream<char>* x);
@@ -447,7 +449,7 @@ output_stream<CharType>::put(temporary_buffer<CharType> buf) noexcept {
     _flush = false;
     if (_flushing) {
         // flush in progress, wait for it to end before continuing
-        return _in_batch.value().get_future().then([this, buf = std::move(buf)] () mutable {
+        return _in_batch.value().get_shared_future().then([this, buf = std::move(buf)] () mutable {
             return _fd.put(std::move(buf));
         });
     } else {
@@ -461,7 +463,11 @@ output_stream<CharType>::poll_flush() noexcept {
     if (!_flush) {
         // flush was canceled, do nothing
         _flushing = false;
-        _in_batch.value().set_value();
+        if (!_ex) {
+            _in_batch.value().set_value();
+        } else {
+            _in_batch.value().set_exception(_ex);
+        }
         _in_batch = std::nullopt;
         return;
     }
@@ -498,7 +504,7 @@ future<>
 output_stream<CharType>::close() noexcept {
     return flush().finally([this] {
         if (_in_batch) {
-            return _in_batch.value().get_future();
+            return _in_batch.value().get_shared_future();
         } else {
             return make_ready_future();
         }

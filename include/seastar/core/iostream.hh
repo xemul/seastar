@@ -38,6 +38,7 @@
 #include <seastar/core/future.hh>
 #include <seastar/core/temporary_buffer.hh>
 #include <seastar/core/scattered_message.hh>
+#include <seastar/core/shared_future.hh>
 #include <seastar/util/std-compat.hh>
 
 namespace seastar {
@@ -354,7 +355,7 @@ class output_stream final {
     size_t _end = 0;
     bool _trim_to_size = false;
     bool _batch_flushes = false;
-    std::optional<promise<>> _in_batch;
+    std::optional<shared_promise<>> _in_batch;
     bool _flush = false;
     bool _flushing = false;
     std::exception_ptr _ex;

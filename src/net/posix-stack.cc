@@ -211,6 +211,19 @@ private:
     explicit posix_connected_socket_impl(sa_family_t family, int protocol, pollable_fd fd, conntrack::handle&& handle,
         std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator) : _fd(std::move(fd))
                 , _ops(get_posix_connected_socket_ops(family, protocol)), _handle(std::move(handle)), _allocator(allocator) {}
+
+    void do_shutdown(int how) noexcept {
+        try {
+            // file_desc::shutdown ignores ENOTCONN. Other reasons for exception
+            // EINVAL (wrong "how") -- impossible
+            // ENOTSOCK (not a socket) -- incredible
+            // EBADF (invalid file descriptor) -- irretrievable
+            _fd.shutdown(how);
+        } catch (...) {
+            on_internal_error(seastar_logger, std::current_exception());
+        }
+    }
+
 public:
     virtual data_source source() override {
         return source(connected_socket_input_stream_config());
@@ -222,10 +235,10 @@ public:
         return data_sink(std::make_unique< posix_data_sink_impl>(_fd));
     }
     virtual void shutdown_input() override {
-        _fd.shutdown(SHUT_RD);
+        do_shutdown(SHUT_RD);
     }
     virtual void shutdown_output() override {
-        _fd.shutdown(SHUT_WR);
+        do_shutdown(SHUT_WR);
     }
     virtual void set_nodelay(bool nodelay) override {
         return _ops->set_nodelay(_fd.get_file_desc(), nodelay);

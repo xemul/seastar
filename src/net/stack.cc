@@ -137,11 +137,11 @@ socket_address connected_socket::local_address() const noexcept {
     return _csi->local_address();
 }
 
-void connected_socket::shutdown_output() {
+void connected_socket::shutdown_output() noexcept {
     _csi->shutdown_output();
 }
 
-void connected_socket::shutdown_input() {
+void connected_socket::shutdown_input() noexcept {
     _csi->shutdown_input();
 }
 

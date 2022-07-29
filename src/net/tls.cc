@@ -1599,10 +1599,10 @@ public:
     data_source source() override;
     data_sink sink() override;
 
-    void shutdown_input() override {
+    void shutdown_input() noexcept override {
         _session->close();
     }
-    void shutdown_output() override {
+    void shutdown_output() noexcept override {
         _session->close();
     }
     void set_nodelay(bool nodelay) override {

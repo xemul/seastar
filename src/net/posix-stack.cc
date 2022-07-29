@@ -234,10 +234,10 @@ public:
     virtual data_sink sink() override {
         return data_sink(std::make_unique< posix_data_sink_impl>(_fd));
     }
-    virtual void shutdown_input() override {
+    virtual void shutdown_input() noexcept override {
         do_shutdown(SHUT_RD);
     }
-    virtual void shutdown_output() override {
+    virtual void shutdown_output() noexcept override {
         do_shutdown(SHUT_WR);
     }
     virtual void set_nodelay(bool nodelay) override {

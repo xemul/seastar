@@ -36,8 +36,8 @@ public:
     virtual data_source source() = 0;
     virtual data_source source(connected_socket_input_stream_config csisc);
     virtual data_sink sink() = 0;
-    virtual void shutdown_input() = 0;
-    virtual void shutdown_output() = 0;
+    virtual void shutdown_input() noexcept = 0;
+    virtual void shutdown_output() noexcept = 0;
     virtual void set_nodelay(bool nodelay) = 0;
     virtual bool get_nodelay() const = 0;
     virtual void set_keepalive(bool keepalive) = 0;

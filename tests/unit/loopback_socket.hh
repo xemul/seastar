@@ -156,10 +156,10 @@ public:
     data_sink sink() override {
         return data_sink(std::make_unique<loopback_data_sink_impl>(_tx));
     }
-    void shutdown_input() override {
+    void shutdown_input() noexcept override {
         _rx->shutdown();
     }
-    void shutdown_output() override {
+    void shutdown_output() noexcept override {
         (void)smp::submit_to(_tx.get_owner_shard(), [this] {
             // FIXME: who holds to _tx?
             _tx->shutdown();

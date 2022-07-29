@@ -226,13 +226,13 @@ public:
     /// will immediately fail with an error.  This is useful to abort
     /// operations on a socket that is not making progress due to a
     /// peer failure.
-    void shutdown_output();
+    void shutdown_output() noexcept;
     /// Disables input from the socket.
     ///
     /// Current or future reads will immediately fail with an error.
     /// This is useful to abort operations on a socket that is not making
     /// progress due to a peer failure.
-    void shutdown_input();
+    void shutdown_input() noexcept;
     /// Check whether the \c connected_socket is initialized.
     ///
     /// \return true if this \c connected_socket socket_address is bound initialized

@@ -648,6 +648,10 @@ posix_data_sink_impl::close() {
     return make_ready_future<>();
 }
 
+void posix_data_sink_impl::abort_write(std::exception_ptr) noexcept {
+    shutdown_socket_fd(_fd, SHUT_WR);
+}
+
 posix_network_stack::posix_network_stack(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator)
         : _reuseport(engine().posix_reuseport_available()), _allocator(allocator) {
 }

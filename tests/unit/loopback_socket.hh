@@ -118,6 +118,13 @@ public:
             });
         });
     }
+
+    void abort_write(std::exception_ptr eptr) noexcept override {
+        // Mimic the shutdown(SHUT_WR)
+        (void)smp::submit_to(_buffer.get_owner_shard(), [this] {
+            _buffer->shutdown();
+        });
+    }
 };
 
 class loopback_data_source_impl : public data_source_impl {

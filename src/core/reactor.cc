@@ -2452,6 +2452,10 @@ public:
     }
 };
 
+void data_sink_impl::abort_write(std::exception_ptr eptr) noexcept {
+    on_internal_error_noexcept(seastar_logger, format("batch-flush reports error for not applicable data_sink: {}", eptr));
+}
+
 class reactor::batch_flush_pollfn final : public simple_pollfn<true> {
     reactor& _r;
 public:

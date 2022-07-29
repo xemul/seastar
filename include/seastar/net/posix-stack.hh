@@ -128,6 +128,7 @@ public:
     future<> put(packet p) override;
     future<> put(temporary_buffer<char> buf) override;
     future<> close() override;
+    void terminate(std::exception_ptr eptr) noexcept override;
 };
 
 class posix_ap_server_socket_impl : public server_socket_impl {

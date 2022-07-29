@@ -710,6 +710,7 @@ public:
         void shutdown_connect();
         void close_read() noexcept;
         void close_write() noexcept;
+        void terminate(std::exception_ptr) noexcept;
     };
     class listener {
         tcp& _tcp;
@@ -2108,6 +2109,11 @@ void tcp<InetTraits>::connection::close_read() noexcept {
 template <typename InetTraits>
 void tcp<InetTraits>::connection::close_write() noexcept {
     _tcb->close();
+}
+
+template <typename InetTraits>
+void tcp<InetTraits>::connection::terminate(std::exception_ptr ex) noexcept {
+    _tcb->do_reset();
 }
 
 template <typename InetTraits>

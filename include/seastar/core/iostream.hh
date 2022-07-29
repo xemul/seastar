@@ -113,6 +113,10 @@ public:
     }
     virtual future<> close() = 0;
 
+    // Emergency close. When batch flush fails "in the background" it
+    // only has the data_sink at hand to forward the failure to
+    virtual void terminate(std::exception_ptr eptr) noexcept;
+
     // The method should return the maximum buffer size that's acceptable by
     // the sink. It's used when the output stream is constructed without any
     // specific buffer size. In this case the stream accepts this value as its
@@ -169,6 +173,7 @@ public:
         }
     }
 
+    void on_batch_flush_error(std::exception_ptr eptr) noexcept { _dsi->terminate(std::move(eptr)); }
     size_t buffer_size() const noexcept { return _dsi->buffer_size(); }
 };
 
@@ -360,7 +365,6 @@ class output_stream final {
     std::optional<promise<>> _in_batch;
     bool _flush = false;
     bool _flushing = false;
-    std::exception_ptr _ex;
     bi::slist_member_hook<> _in_poller;
 
 private:

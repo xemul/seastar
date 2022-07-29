@@ -648,6 +648,14 @@ posix_data_sink_impl::close() {
     return make_ready_future<>();
 }
 
+void posix_data_sink_impl::terminate(std::exception_ptr) noexcept {
+    // This closes connection as if it was close()d, but leaves file
+    // descriptors around so that other fibers could still use it. The
+    // idea behind that is notifying any data_sources sharing this _fd
+    // wake up with "connection closed" and wrap up
+    _fd.shutdown(SHUT_RDWR);
+}
+
 posix_network_stack::posix_network_stack(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator)
         : _reuseport(engine().posix_reuseport_available()), _allocator(allocator) {
 }

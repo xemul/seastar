@@ -1670,6 +1670,10 @@ private:
         _session->close();
         return make_ready_future<>();
     }
+
+    virtual void terminate(std::exception_ptr) noexcept override {
+        _session->close();
+    }
 };
 
 class server_session : public net::server_socket_impl {

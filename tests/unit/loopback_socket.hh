@@ -96,9 +96,12 @@ public:
 
 class loopback_data_sink_impl : public data_sink_impl {
     lw_shared_ptr<foreign_ptr<lw_shared_ptr<loopback_buffer>>> _buffer;
+    lw_shared_ptr<loopback_buffer> _rx_buffer;
 public:
-    explicit loopback_data_sink_impl(lw_shared_ptr<foreign_ptr<lw_shared_ptr<loopback_buffer>>> buffer)
-            : _buffer(buffer) {
+    explicit loopback_data_sink_impl(lw_shared_ptr<foreign_ptr<lw_shared_ptr<loopback_buffer>>> buffer, lw_shared_ptr<loopback_buffer> rx_buffer)
+            : _buffer(buffer)
+            , _rx_buffer(rx_buffer)
+    {
     }
     future<> put(net::packet data) override {
         return do_with(data.release(), [this] (std::vector<temporary_buffer<char>>& bufs) {
@@ -116,6 +119,13 @@ public:
                     throw err;
                 }
             });
+        });
+    }
+
+    void terminate(std::exception_ptr eptr) noexcept override {
+        _rx_buffer->shutdown();
+        (void)smp::submit_to(_buffer->get_owner_shard(), [tx = _buffer] {
+            (*tx)->shutdown();
         });
     }
 };
@@ -160,7 +170,7 @@ public:
         return data_source(std::make_unique<loopback_data_source_impl>(_rx));
     }
     data_sink sink() override {
-        return data_sink(std::make_unique<loopback_data_sink_impl>(_tx));
+        return data_sink(std::make_unique<loopback_data_sink_impl>(_tx, _rx));
     }
     void shutdown_input() override {
         _rx->shutdown();

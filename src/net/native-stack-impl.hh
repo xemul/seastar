@@ -195,6 +195,9 @@ public:
         _conn->close_write();
         return make_ready_future<>();
     }
+    virtual void terminate(std::exception_ptr ex) noexcept override {
+        _conn->terminate(std::move(ex));
+    }
 };
 
 template <typename Protocol>

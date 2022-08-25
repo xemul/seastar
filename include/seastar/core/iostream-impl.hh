@@ -426,11 +426,11 @@ output_stream<CharType>::flush() noexcept {
             });
         }
     } else {
-            _flush = true;
-            if (!_in_batch) {
-                add_to_flush_poller(*this);
-                _in_batch = promise<>();
-            }
+        _flush = true;
+        if (!_in_batch) {
+            add_to_flush_poller(*this);
+            _in_batch = promise<>();
+        }
     }
     return make_ready_future<>();
 }

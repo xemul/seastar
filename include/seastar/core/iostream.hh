@@ -332,7 +332,13 @@ private:
 struct output_stream_options {
     bool trim_to_size = false; ///< Make sure that buffers put into sink haven't
                                ///< grown larger than the configured size
-    bool batch_flushes = false; ///< Try to merge flushes with each other
+    [[deprecated("use batch_flush_context")]]
+    bool batch_flushes; ///< Try to merge flushes with each other
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    constexpr output_stream_options() noexcept : batch_flushes(false) { }
+#pragma GCC diagnostic pop
 };
 
 /// Facilitates data buffering before it's handed over to data_sink.
@@ -348,6 +354,16 @@ struct output_stream_options {
 /// resolved.
 template <typename CharType>
 class output_stream final {
+public:
+    struct batch_flush_context {
+        std::optional<promise<>> in_batch;
+        std::exception_ptr ex;
+        bi::slist_member_hook<> in_poller;
+        output_stream* stream = nullptr;
+        void poll() noexcept;
+    };
+
+private:
     static_assert(sizeof(CharType) == 1, "must buffer stream of bytes");
     data_sink _fd;
     temporary_buffer<CharType> _buf;
@@ -356,19 +372,15 @@ class output_stream final {
     size_t _begin = 0;
     size_t _end = 0;
     bool _trim_to_size = false;
-    bool _batch_flushes = false;
-    std::optional<promise<>> _in_batch;
     bool _flush = false;
     bool _flushing = false;
-    std::exception_ptr _ex;
-    bi::slist_member_hook<> _in_poller;
+    std::unique_ptr<batch_flush_context> _batch_flushes;
 
 private:
     size_t available() const noexcept { return _end - _begin; }
     size_t possibly_available() const noexcept { return _size - _begin; }
     future<> split_and_put(temporary_buffer<CharType> buf) noexcept;
     future<> put(temporary_buffer<CharType> buf) noexcept;
-    void poll_flush() noexcept;
     future<> do_flush() noexcept;
     future<> zero_copy_put(net::packet p) noexcept;
     future<> zero_copy_split_and_put(net::packet p) noexcept;
@@ -377,18 +389,56 @@ private:
 public:
     using char_type = CharType;
     output_stream() noexcept = default;
-    output_stream(data_sink fd, size_t size, output_stream_options opts = {}) noexcept
-        : _fd(std::move(fd)), _size(size), _trim_to_size(opts.trim_to_size), _batch_flushes(opts.batch_flushes) {}
+    output_stream(data_sink fd, size_t size, output_stream_options opts = {}, std::unique_ptr<batch_flush_context> ctx = {}) noexcept
+        : _fd(std::move(fd)), _size(size), _trim_to_size(opts.trim_to_size), _batch_flushes(std::move(ctx))
+    {
+        if (_batch_flushes) {
+            _batch_flushes->stream = this;
+        }
+    }
     [[deprecated("use output_stream_options instead of booleans")]]
     output_stream(data_sink fd, size_t size, bool trim_to_size, bool batch_flushes = false) noexcept
-        : _fd(std::move(fd)), _size(size), _trim_to_size(trim_to_size), _batch_flushes(batch_flushes) {}
+        : _fd(std::move(fd)), _size(size), _trim_to_size(trim_to_size) {}
     output_stream(data_sink fd) noexcept
         : _fd(std::move(fd)), _size(_fd.buffer_size()), _trim_to_size(true) {}
-    output_stream(output_stream&&) noexcept = default;
-    output_stream& operator=(output_stream&&) noexcept = default;
+    output_stream(output_stream&& o) noexcept
+        : _fd(std::move(o._fd))
+        , _buf(std::move(o._buf))
+        , _zc_bufs(std::move(o._zc_bufs))
+        , _size(std::exchange(o._size, 0))
+        , _begin(std::exchange(o._begin, 0))
+        , _end(std::exchange(o._end, 0))
+        , _trim_to_size(o._trim_to_size)
+        , _flush(o._flush)
+        , _flushing(o._flushing)
+        , _batch_flushes(std::move(o._batch_flushes))
+    {
+        if (_batch_flushes) {
+            _batch_flushes->stream = this;
+        }
+    }
+    output_stream& operator=(output_stream&& o) noexcept {
+        if (this != &o) {
+            _fd = std::move(o._fd);
+            _buf = std::move(o._buf);
+            _zc_bufs = std::move(o._zc_bufs);
+            _size = std::exchange(o._size, 0);
+            _begin = std::exchange(o._begin, 0);
+            _end = std::exchange(o._end, 0);
+            _trim_to_size = o._trim_to_size;
+            _flush = o._flush;
+            _flushing = o._flushing;
+            _batch_flushes = std::move(o._batch_flushes);
+            if (_batch_flushes) {
+                _batch_flushes->stream = this;
+            }
+        }
+        return *this;
+    }
+
     ~output_stream() {
         if (_batch_flushes) {
-            assert(!_in_batch && "Was this stream properly closed?");
+            assert(!_batch_flushes->in_batch && "Was this stream properly closed?");
         } else {
             assert(!_end && !_zc_bufs && "Was this stream properly closed?");
         }
@@ -423,9 +473,10 @@ public:
     /// \returns the data_sink
     data_sink detach() &&;
 
-    using batch_flush_list_t = bi::slist<output_stream,
+    friend void add_to_flush_poller(output_stream<char>& os) noexcept;
+    using batch_flush_list_t = bi::slist<batch_flush_context,
             bi::constant_time_size<false>, bi::cache_last<true>,
-            bi::member_hook<output_stream, bi::slist_member_hook<>, &output_stream::_in_poller>>;
+            bi::member_hook<batch_flush_context, bi::slist_member_hook<>, &batch_flush_context::in_poller>>;
 private:
     friend class reactor;
 };

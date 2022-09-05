@@ -2364,7 +2364,7 @@ reactor::flush_tcp_batches() {
     while (!_flush_batching.empty()) {
         auto& os = _flush_batching.front();
         _flush_batching.pop_front();
-        os.poll_flush();
+        os.poll();
     }
     return work;
 }
@@ -4331,7 +4331,7 @@ future<> later() noexcept {
 }
 
 void add_to_flush_poller(output_stream<char>& os) noexcept {
-    engine()._flush_batching.push_back(os);
+    engine()._flush_batching.push_back(*os._batch_flushes);
 }
 
 steady_clock_type::duration reactor::total_idle_time() {

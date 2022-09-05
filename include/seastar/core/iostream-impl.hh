@@ -79,8 +79,9 @@ output_stream<CharType>::zero_copy_put(net::packet p) noexcept {
     // if flush is scheduled, disable it, so it will not try to write in parallel
     _flush = false;
     if (_flushing) {
+        assert(_batch_flushes);
         // flush in progress, wait for it to end before continuing
-        return _in_batch.value().get_future().then([this, p = std::move(p)] () mutable {
+        return _batch_flushes->in_batch.value().get_future().then([this, p = std::move(p)] () mutable {
             return _fd.put(std::move(p));
         });
     } else {
@@ -433,14 +434,14 @@ output_stream<CharType>::flush() noexcept {
     if (!_batch_flushes) {
         return do_flush();
     } else {
-        if (_ex) {
+        if (_batch_flushes->ex) {
             // flush is a good time to deliver outstanding errors
-            return make_exception_future<>(std::move(_ex));
+            return make_exception_future<>(std::move(_batch_flushes->ex));
         } else {
             _flush = true;
-            if (!_in_batch) {
+            if (!_batch_flushes->in_batch) {
                 add_to_flush_poller(*this);
-                _in_batch = promise<>();
+                _batch_flushes->in_batch = promise<>();
             }
         }
     }
@@ -453,8 +454,9 @@ output_stream<CharType>::put(temporary_buffer<CharType> buf) noexcept {
     // if flush is scheduled, disable it, so it will not try to write in parallel
     _flush = false;
     if (_flushing) {
+        assert(_batch_flushes);
         // flush in progress, wait for it to end before continuing
-        return _in_batch.value().get_future().then([this, buf = std::move(buf)] () mutable {
+        return _batch_flushes->in_batch.value().get_future().then([this, buf = std::move(buf)] () mutable {
             return _fd.put(std::move(buf));
         });
     } else {
@@ -463,28 +465,29 @@ output_stream<CharType>::put(temporary_buffer<CharType> buf) noexcept {
 }
 
 template <typename CharType>
-void
-output_stream<CharType>::poll_flush() noexcept {
-    if (!_flush) {
+void output_stream<CharType>::batch_flush_context::poll() noexcept {
+    assert(stream != nullptr);
+
+    if (!stream->_flush) {
         // flush was canceled, do nothing
-        _flushing = false;
-        _in_batch.value().set_value();
-        _in_batch = std::nullopt;
+        stream->_flushing = false;
+        in_batch.value().set_value();
+        in_batch = std::nullopt;
         return;
     }
 
-    _flush = false;
-    _flushing = true; // make whoever wants to write into the fd to wait for flush to complete
+    stream->_flush = false;
+    stream->_flushing = true; // make whoever wants to write into the fd to wait for flush to complete
 
     // FIXME: future is discarded
-    (void)do_flush().then_wrapped([this] (future<> f) {
+    (void)stream->do_flush().then_wrapped([this] (future<> f) {
         try {
             f.get();
         } catch (...) {
-            _ex = std::current_exception();
+            ex = std::current_exception();
         }
         // if flush() was called while flushing flush once more
-        poll_flush();
+        poll();
     });
 }
 
@@ -492,15 +495,15 @@ template <typename CharType>
 future<>
 output_stream<CharType>::close() noexcept {
     return flush().finally([this] {
-        if (_in_batch) {
-            return _in_batch.value().get_future();
+        if (_batch_flushes && _batch_flushes->in_batch) {
+            return _batch_flushes->in_batch.value().get_future();
         } else {
             return make_ready_future();
         }
     }).then([this] {
         // report final exception as close error
-        if (_ex) {
-            std::rethrow_exception(_ex);
+        if (_batch_flushes && _batch_flushes->ex) {
+            std::rethrow_exception(_batch_flushes->ex);
         }
     }).finally([this] {
         return _fd.close();

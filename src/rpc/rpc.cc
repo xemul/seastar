@@ -203,7 +203,10 @@ namespace rpc {
       }
       _fd = std::move(fd);
       _read_buf =_fd.input();
-      _write_buf = _fd.output();
+      _write_buf = _fd.output([this] (std::exception_ptr eptr) noexcept {
+          log_exception(*this, log_level::error, "batch flush error, aborting connection", std::move(eptr));
+          abort();
+      });
       _connected = true;
   }
 

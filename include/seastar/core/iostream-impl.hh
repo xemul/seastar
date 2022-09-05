@@ -434,11 +434,11 @@ output_stream<CharType>::flush() noexcept {
     if (!_batch_flushes) {
         return do_flush();
     } else {
-            _flush = true;
-            if (!_batch_flushes->in_batch) {
-                add_to_flush_poller(*this);
-                _batch_flushes->in_batch = promise<>();
-            }
+        _flush = true;
+        if (!_batch_flushes->in_batch) {
+            add_to_flush_poller(*this);
+            _batch_flushes->in_batch = promise<>();
+        }
     }
     return make_ready_future<>();
 }

@@ -40,6 +40,7 @@
 #include <seastar/core/temporary_buffer.hh>
 #include <seastar/core/scattered_message.hh>
 #include <seastar/util/std-compat.hh>
+#include <seastar/util/noncopyable_function.hh>
 
 namespace bi = boost::intrusive;
 
@@ -357,10 +358,13 @@ class output_stream final {
 public:
     struct batch_flush_context {
         std::optional<promise<>> in_batch;
-        std::exception_ptr ex;
+        noncopyable_function<void(std::exception_ptr) noexcept> on_error;
         bi::slist_member_hook<> in_poller;
         output_stream* stream = nullptr;
         void poll() noexcept;
+        explicit batch_flush_context(noncopyable_function<void(std::exception_ptr) noexcept> fn) noexcept
+            : on_error(std::move(fn))
+        {}
     };
 
 private:

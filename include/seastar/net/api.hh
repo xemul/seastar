@@ -194,6 +194,14 @@ public:
     /// Gets an object that sends data to the remote endpoint.
     /// \param buffer_size how much data to buffer
     output_stream<char> output(size_t buffer_size = 8192);
+
+    /// Gets the output stream.
+    ///
+    /// Gets an object that sends data to the remote endpoint.
+    /// \param on_batch_flush_error the batch-flush error callback
+    /// \param buffer_size how much data to buffer
+    output_stream<char> output(noncopyable_function<void(std::exception_ptr) noexcept> on_batch_flush_error, size_t buffer_size = 8192);
+
     /// Sets the TCP_NODELAY option (disabling Nagle's algorithm)
     void set_nodelay(bool nodelay);
     /// Gets the TCP_NODELAY option (Nagle's algorithm)

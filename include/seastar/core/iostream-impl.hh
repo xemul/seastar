@@ -434,16 +434,11 @@ output_stream<CharType>::flush() noexcept {
     if (!_batch_flushes) {
         return do_flush();
     } else {
-        if (_batch_flushes->ex) {
-            // flush is a good time to deliver outstanding errors
-            return make_exception_future<>(std::move(_batch_flushes->ex));
-        } else {
             _flush = true;
             if (!_batch_flushes->in_batch) {
                 add_to_flush_poller(*this);
                 _batch_flushes->in_batch = promise<>();
             }
-        }
     }
     return make_ready_future<>();
 }
@@ -481,10 +476,8 @@ void output_stream<CharType>::batch_flush_context::poll() noexcept {
 
     // FIXME: future is discarded
     (void)stream->do_flush().then_wrapped([this] (future<> f) {
-        try {
-            f.get();
-        } catch (...) {
-            ex = std::current_exception();
+        if (f.failed()) {
+            on_error(f.get_exception());
         }
         // if flush() was called while flushing flush once more
         poll();
@@ -499,11 +492,6 @@ output_stream<CharType>::close() noexcept {
             return _batch_flushes->in_batch.value().get_future();
         } else {
             return make_ready_future();
-        }
-    }).then([this] {
-        // report final exception as close error
-        if (_batch_flushes && _batch_flushes->ex) {
-            std::rethrow_exception(_batch_flushes->ex);
         }
     }).finally([this] {
         return _fd.close();

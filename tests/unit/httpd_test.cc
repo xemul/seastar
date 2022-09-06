@@ -952,6 +952,8 @@ future<> check_http_reply (std::vector<sstring>&& req_parts, std::vector<std::st
 
             input.close().get();
             output.close().get();
+        }).handle_exception([] (std::exception_ptr e) {
+            // ignore
         });
 
         server._routes.put(GET, "/test", handl);

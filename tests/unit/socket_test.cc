@@ -87,7 +87,9 @@ SEASTAR_TEST_CASE(socket_skip_test) {
         abort_source as;
         auto client = async([&as] {
             connected_socket socket = connect(ipv4_addr("127.0.0.1", 1234)).get();
-            socket.output().write("abc").get();
+            auto out = socket.output();
+            out.write("abc").get();
+            out.close().get();
             socket.shutdown_output();
             try {
                 sleep_abortable(std::chrono::seconds(10), as).get();

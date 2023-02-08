@@ -501,7 +501,9 @@ public:
     future<> do_start(sstring path, directory_entry_type type) override {
         return do_start_on(path, type).then([this] {
             return _file.stat().then([this] (struct ::stat st) {
-                _watchdog_queue = &engine().get_io_queue(st.st_dev);
+                if (_config.shard_info.sched_class == "") {
+                    _watchdog_queue = &engine().get_io_queue(st.st_dev);
+                }
                 return make_ready_future<>();
             });
         });

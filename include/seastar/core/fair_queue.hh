@@ -347,6 +347,9 @@ private:
 
     friend class ::io_class_data;
     std::optional<pending> _pending;
+    bool _oversubscribing = false;
+    std::optional<pending> _oversubscribe;
+    uint64_t _oversubscriptions = 0;
 
     void push_priority_class(priority_class_data& pc) noexcept;
     void push_priority_class_from_idle(priority_class_data& pc) noexcept;
@@ -357,6 +360,7 @@ private:
     enum class grab_result { grabbed, cant_preempt, pending };
     grab_result grab_capacity(const fair_queue_entry& ent) noexcept;
     grab_result grab_pending_capacity(const fair_queue_entry& ent) noexcept;
+    void oversubscribe_capacity(capacity_t cap) noexcept;
 public:
     /// Constructs a fair queue with configuration parameters \c cfg.
     ///

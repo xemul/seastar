@@ -266,6 +266,11 @@ auto fair_queue::grab_pending_capacity(const fair_queue_entry& ent) noexcept -> 
     }
 
     _pending.reset();
+    if (_oversubscribe) {
+        _pending = *_oversubscribe;
+        _oversubscribe.reset();
+    }
+
     return grab_result::grabbed;
 }
 
@@ -282,6 +287,13 @@ auto fair_queue::grab_capacity(const fair_queue_entry& ent) noexcept -> grab_res
     }
 
     return grab_result::grabbed;
+}
+
+void fair_queue::oversubscribe_capacity(capacity_t cap) noexcept {
+    assert(_pending);
+    capacity_t want_head = _group.grab_capacity(cap);
+    _oversubscribe.emplace(want_head, cap);
+    _oversubscriptions++;
 }
 
 void fair_queue::register_priority_class(class_id id, uint32_t shares) {
@@ -326,6 +338,9 @@ fair_queue_ticket fair_queue::resources_currently_executing() const {
     return _resources_executing;
 }
 
+static constexpr unsigned oversubscribe_start = 40;
+static constexpr unsigned oversubscribe_stop = 8;
+
 void fair_queue::queue(class_id id, fair_queue_entry& ent) noexcept {
     priority_class_data& pc = *_priority_classes[id];
     // We need to return a future in this function on which the caller can wait.
@@ -337,6 +352,9 @@ void fair_queue::queue(class_id id, fair_queue_entry& ent) noexcept {
     pc._queue.push_back(ent);
     _resources_queued += ent._ticket;
     _requests_queued++;
+    if (_requests_queued >= oversubscribe_start) {
+        _oversubscribing = true;
+    }
 }
 
 void fair_queue::notify_request_finished(fair_queue_ticket desc) noexcept {
@@ -380,6 +398,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         }
 
         if (dispatched >= _group.maximum_capacity() / smp::count) {
+            _loop_break_dispatched++;
             break;
         }
 
@@ -392,6 +411,12 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         auto& req = h._queue.front();
         auto gr = grab_capacity(req);
         if (gr == grab_result::pending) {
+            if (_oversubscribing && !_oversubscribe) {
+                auto cap = _group.ticket_capacity(req._ticket);
+                if (cap > 0) {
+                    oversubscribe_capacity(cap);
+                }
+            }
             break;
         }
 
@@ -409,6 +434,9 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         _resources_queued -= req._ticket;
         _requests_executing++;
         _requests_queued--;
+        if (_requests_queued < oversubscribe_stop) {
+            _oversubscribing = false;
+        }
 
         // Usually the cost of request is tens to hundreeds of thousands. However, for
         // unrestricted queue it can be as low as 2k. With large enough shares this

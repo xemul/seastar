@@ -645,6 +645,10 @@ public:
             return;
         }
 
+        if (this_shard_id() == 0) {
+            fmt::print("-----------------------------------8<-------------------------------------------\n");
+        }
+
         auto st = _watchdog_queue->get_class_stats(_iop);
         fmt::print("{:5d}.{:2d}:{:16}  queued {:<10d} executing {:<10d} total read {:<10d} write {:<10d}\n", cnt, this_shard_id(), name(),
             st.queued_requests, st.executing_requests,
@@ -942,7 +946,9 @@ public:
     }
 
     future<> start_watchdog(std::chrono::seconds period) {
-        _watchdog.arm_periodic(period);
+        auto first = std::chrono::duration_cast<std::chrono::milliseconds>(period);
+        first += std::chrono::milliseconds(1 + this_shard_id());
+        _watchdog.arm(std::chrono::steady_clock::now() + first, period);
         return make_ready_future<>();
     }
 

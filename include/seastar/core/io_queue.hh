@@ -169,6 +169,7 @@ public:
         uint64_t executing_requests = 0;
         uint64_t total_read_requests = 0;
         uint64_t total_write_requests = 0;
+        const fair_queue* fq = nullptr;
     };
 
     class_statistics get_class_stats(io_priority_class pc) const noexcept;

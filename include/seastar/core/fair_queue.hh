@@ -35,6 +35,7 @@
 #include <unordered_set>
 
 namespace bi = boost::intrusive;
+class io_class_data;
 
 namespace seastar {
 
@@ -344,6 +345,7 @@ private:
         pending(capacity_t t, capacity_t c) noexcept : head(t), cap(c) {}
     };
 
+    friend class ::io_class_data;
     std::optional<pending> _pending;
 
     void push_priority_class(priority_class_data& pc) noexcept;

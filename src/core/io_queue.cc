@@ -784,7 +784,9 @@ io_queue::class_statistics io_queue::get_class_stats(io_priority_class pc) const
     if (id >= _priority_classes.size() || !_priority_classes[id]) {
         return class_statistics{};
     } else {
-        return _priority_classes[id]->get_stats();
+        auto st = _priority_classes[id]->get_stats();
+        st.fq = &_streams[0];
+        return st;
     }
 }
 

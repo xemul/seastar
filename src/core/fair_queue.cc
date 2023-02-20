@@ -374,7 +374,15 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
     capacity_t dispatched = 0;
     boost::container::small_vector<priority_class_ptr, 2> preempt;
 
-    while (!_handles.empty() && (dispatched < _group.maximum_capacity() / smp::count)) {
+    while (true) {
+        if (_handles.empty()) {
+            break;
+        }
+
+        if (dispatched >= _group.maximum_capacity() / smp::count) {
+            break;
+        }
+
         priority_class_data& h = *_handles.top();
         if (h._queue.empty()) {
             pop_priority_class(h);

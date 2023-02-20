@@ -351,6 +351,10 @@ private:
     std::optional<pending> _oversubscribe;
     uint64_t _oversubscriptions = 0;
 
+    uint64_t _loop_break_empty = 0;
+    uint64_t _loop_break_dispatched = 0;
+    uint64_t _loop_break_pending = 0;
+
     void push_priority_class(priority_class_data& pc) noexcept;
     void push_priority_class_from_idle(priority_class_data& pc) noexcept;
     void pop_priority_class(priority_class_data& pc) noexcept;

@@ -650,12 +650,21 @@ public:
         }
 
         auto st = _watchdog_queue->get_class_stats(_iop);
-        fmt::print("{:5d}.{:2d}:{:16}  queued {:<10d} executing {:<10d} total read {:<10d} write {:<10d} (over {})\n", cnt, this_shard_id(), name(),
+        fmt::print("{:5d}.{:2d}:{:16}  queued {:<10d} executing {:<10d} total read {:<10d} write {:<10d} (over {} lbr {} {} {})\n", cnt, this_shard_id(), name(),
             st.queued_requests, st.executing_requests,
             st.total_read_requests - _watchdog_prev_stats.total_read_requests,
             st.total_write_requests - _watchdog_prev_stats.total_write_requests,
-            st.fq ? st.fq->_oversubscriptions : 0
+            st.fq ? st.fq->_oversubscriptions : 0,
+            st.fq ? st.fq->_loop_break_empty : 0,
+            st.fq ? st.fq->_loop_break_dispatched : 0,
+            st.fq ? st.fq->_loop_break_pending : 0
         );
+        if (st.fq) {
+            st.fq->_loop_break_empty = 0;
+            st.fq->_loop_break_dispatched = 0;
+            st.fq->_loop_break_pending = 0;
+            st.fq->_oversubscriptions = 0;
+        }
         _watchdog_prev_stats = st;
     }
 };

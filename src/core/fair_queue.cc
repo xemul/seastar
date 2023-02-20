@@ -394,6 +394,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
 
     while (true) {
         if (_handles.empty()) {
+            _loop_break_empty++;
             break;
         }
 
@@ -411,6 +412,7 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
         auto& req = h._queue.front();
         auto gr = grab_capacity(req);
         if (gr == grab_result::pending) {
+            _loop_break_pending++;
             if (_oversubscribing && !_oversubscribe) {
                 auto cap = _group.ticket_capacity(req._ticket);
                 if (cap > 0) {

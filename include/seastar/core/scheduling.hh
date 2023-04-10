@@ -283,6 +283,7 @@ public:
     /// \param shares number of shares allotted to the group. Use numbers
     ///               in the 1-1000 range.
     void set_shares(float shares) noexcept;
+    float get_shares() const noexcept;
     friend future<scheduling_group> create_scheduling_group(sstring name, float shares) noexcept;
     friend future<> destroy_scheduling_group(scheduling_group sg) noexcept;
     friend future<> rename_scheduling_group(scheduling_group sg, sstring new_name) noexcept;

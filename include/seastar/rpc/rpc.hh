@@ -242,7 +242,7 @@ protected:
     bool _connected = false;
     std::optional<shared_promise<>> _negotiated = shared_promise<>();
     promise<> _stopped;
-    stats _stats;
+    linked_stats _stats;
     const logger& _logger;
     // The owner of the pointer below is an instance of rpc::protocol<typename Serializer> class.
     // The type of the pointer is erased here, but the original type is Serializer
@@ -348,7 +348,7 @@ public:
     connection_id get_connection_id() const noexcept {
         return _id;
     }
-    stats& get_stats_internal() noexcept {
+    linked_stats& get_stats_internal() noexcept {
         return _stats;
     }
     xshard_connection_ptr get_stream(connection_id id) const;
@@ -357,6 +357,10 @@ public:
 
     const logger& get_logger() const noexcept {
         return _logger;
+    }
+
+    void set_stats_group(stats_group& g) {
+        g.attach(_stats);
     }
 
     template<typename Serializer>

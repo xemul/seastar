@@ -26,6 +26,7 @@
 #include <string>
 #include <boost/any.hpp>
 #include <boost/type.hpp>
+#include <boost/intrusive/list.hpp>
 #include <seastar/util/std-compat.hh>
 #include <seastar/util/variant_utils.hh>
 #include <seastar/core/timer.hh>
@@ -45,6 +46,8 @@ using rpc_clock_type = lowres_clock;
 template<typename T>
 using type = boost::type<T>;
 
+class stats_group;
+
 struct stats {
     using counter_type = uint64_t;
     counter_type replied = 0;
@@ -53,6 +56,36 @@ struct stats {
     counter_type sent_messages = 0;
     counter_type wait_reply = 0;
     counter_type timeout = 0;
+};
+
+struct linked_stats : public stats {
+private:
+    stats_group* _g = nullptr;
+    using member_hook_t = boost::intrusive::list_member_hook<boost::intrusive::link_mode<boost::intrusive::auto_unlink>>;
+    member_hook_t _link;
+public:
+    using list_t = boost::intrusive::list<linked_stats,
+        boost::intrusive::member_hook<linked_stats, linked_stats::member_hook_t, &linked_stats::_link>,
+        boost::intrusive::constant_time_size<false>>;
+
+    void attach(stats_group* g) noexcept {
+        assert(_g == nullptr);
+        _g = g;
+    }
+
+    ~linked_stats();
+};
+
+class stats_group {
+    std::string _name;
+    linked_stats::list_t _stats;
+public:
+    stats_group(std::string name);
+    ~stats_group();
+    void attach(linked_stats& st) {
+        _stats.push_back(st);
+        st.attach(this);
+    }
 };
 
 class connection_id {

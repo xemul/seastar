@@ -1253,6 +1253,18 @@ future<> server::connection::send_unknown_verb_reply(std::optional<rpc_clock_typ
       return isolation_config{};
   }
 
+linked_stats::~linked_stats() {
+}
+
+stats_group::stats_group(std::string name)
+        : _name(std::move(name))
+{
+}
+
+stats_group::~stats_group() {
+    assert(_stats.empty());
+}
+
 }
 
 }

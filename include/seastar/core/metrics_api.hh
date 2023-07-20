@@ -27,6 +27,7 @@
 #ifndef SEASTAR_MODULE
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
+#include <boost/intrusive/list.hpp>
 #endif
 
 /*!
@@ -196,8 +197,14 @@ struct metric_info {
 
 using metrics_registration = std::vector<metric_id>;
 
+struct updater : public bi::list_base_hook<bi::link_mode<bi::auto_unlink>> {
+    std::function<void()> update;
+    updater(std::function<void()> u) : update(std::move(u)) {}
+};
+
 class metric_groups_impl : public metric_groups_def {
     metrics_registration _registration;
+    std::unique_ptr<updater> _updater;
 public:
     metric_groups_impl() = default;
     ~metric_groups_impl();
@@ -206,6 +213,7 @@ public:
     metric_groups_impl& add_metric(group_name_type name, const metric_definition& md);
     metric_groups_impl& add_group(group_name_type name, const std::initializer_list<metric_definition>& l);
     metric_groups_impl& add_group(group_name_type name, const std::vector<metric_definition>& l);
+    void add_notification(std::function<void()>);
 };
 
 class impl;
@@ -346,6 +354,8 @@ struct config {
     sstring hostname;
 };
 
+namespace bi = boost::intrusive;
+
 class impl {
     value_map _value_map;
     config _config;
@@ -354,6 +364,9 @@ class impl {
     std::set<sstring> _labels;
     std::vector<std::vector<metric_function>> _current_metrics;
     std::vector<relabel_config> _relabel_configs;
+    using updaters_list_t = bi::list<updater, bi::constant_time_size<false>>;
+    updaters_list_t _notify;
+
 public:
     value_map& get_value_map() {
         return _value_map;
@@ -365,6 +378,9 @@ public:
 
     void add_registration(const metric_id& id, const metric_type& type, metric_function f, const description& d, bool enabled, skip_when_empty skip, const std::vector<std::string>& aggregate_labels);
     void remove_registration(const metric_id& id);
+    void register_notification(updater& u) {
+        _notify.push_back(u);
+    }
     future<> stop() {
         return make_ready_future<>();
     }
@@ -380,6 +396,7 @@ public:
     std::vector<std::vector<metric_function>>& functions();
 
     void update_metrics_if_needed();
+    void notify_metrics_update();
 
     void dirty() {
         _dirty = true;

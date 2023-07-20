@@ -146,6 +146,11 @@ public:
     metric_groups& add_group(const group_name_type& name, const std::vector<metric_definition>& l);
 
     /*!
+     * \brief Add metrics update notification callback
+     */
+    metric_groups& add_notification(std::function<void()>);
+
+    /*!
      * \brief clear all metrics groups registrations.
      */
     void clear();

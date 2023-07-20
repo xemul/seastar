@@ -66,6 +66,12 @@ metric_groups& metric_groups::add_group(const group_name_type& name, const std::
     _impl->add_group(name, l);
     return *this;
 }
+
+metric_groups& metric_groups::add_notification(std::function<void()> fn) {
+    _impl->add_notification(std::move(fn));
+    return *this;
+}
+
 metric_group::metric_group() noexcept = default;
 metric_group::~metric_group() = default;
 metric_group::metric_group(const group_name_type& name, std::initializer_list<metric_definition> l) {
@@ -310,6 +316,11 @@ metric_groups_impl& metric_groups_impl::add_group(group_name_type name, const st
     return *this;
 }
 
+void metric_groups_impl::add_notification(std::function<void()> fn) {
+    _updater = std::make_unique<updater>(std::move(fn));
+    get_local_impl()->register_notification(*_updater);
+}
+
 bool metric_id::operator<(
         const metric_id& id2) const {
     return as_tuple() < id2.as_tuple();
@@ -367,6 +378,7 @@ foreign_ptr<values_reference> get_values() {
     res.metadata = get_local_impl()->metadata();
     auto & functions = get_local_impl()->functions();
     mv.reserve(functions.size());
+    get_local_impl()->notify_metrics_update();
     for (auto&& i : functions) {
         value_vector values;
         values.reserve(i.size());
@@ -429,6 +441,12 @@ shared_ptr<metric_metadata> impl::metadata() {
 std::vector<std::vector<metric_function>>& impl::functions() {
     update_metrics_if_needed();
     return _current_metrics;
+}
+
+void impl::notify_metrics_update() {
+    for (auto& n : _notify) {
+        n.update();
+    }
 }
 
 void impl::add_registration(const metric_id& id, const metric_type& type, metric_function f, const description& d, bool enabled, skip_when_empty skip, const std::vector<std::string>& aggregate_labels) {

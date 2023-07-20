@@ -33,6 +33,7 @@
 #include <seastar/core/circular_buffer.hh>
 #include <seastar/core/simple-stream.hh>
 #include <seastar/core/lowres_clock.hh>
+#include <seastar/core/metrics.hh>
 #include <boost/functional/hash.hpp>
 #include <seastar/core/sharded.hh>
 
@@ -79,12 +80,27 @@ public:
 class stats_group {
     std::string _name;
     linked_stats::list_t _stats;
+    size_t _nr_entries = 0;
+    stats _dead_stats;
+    stats _current_stats;
+    metrics::metric_groups _metrics;
+
+    void accumulate(stats& to, const stats& from) {
+        to.replied += from.replied;
+        to.exception_received += from.exception_received;
+        to.sent_messages += from.sent_messages;
+        to.timeout += from.timeout;
+    }
+
 public:
     stats_group(std::string name);
     ~stats_group();
     void attach(linked_stats& st) {
         _stats.push_back(st);
         st.attach(this);
+    }
+    void update_dying_stats(const linked_stats& dying) {
+        accumulate(_dead_stats, dying);
     }
 };
 

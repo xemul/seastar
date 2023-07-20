@@ -1254,11 +1254,30 @@ future<> server::connection::send_unknown_verb_reply(std::optional<rpc_clock_typ
   }
 
 linked_stats::~linked_stats() {
+    if (_g) {
+        _g->update_dying_stats(*this);
+    }
 }
 
 stats_group::stats_group(std::string name)
         : _name(std::move(name))
 {
+    namespace sm = seastar::metrics;
+    auto group_l = sm::label("group")(_name);
+    _metrics.add_notification([this] {
+        _nr_entries = 0;
+        _current_stats = _dead_stats;
+        for (const auto& st : _stats) {
+            _nr_entries++;
+            accumulate(_current_stats, st);
+        }
+    }).add_group("rpc", {
+        sm::make_gauge("nr_connections", _nr_entries, sm::description("Number of connections"), {group_l}),
+        sm::make_counter("nr_replies", _current_stats.replied, sm::description("Total number of replies received"), {group_l}),
+        sm::make_counter("nr_exceptions_received", _current_stats.exception_received, sm::description("Total number of exceptional replied received"), {group_l}),
+        sm::make_counter("nr_sent_messages", _current_stats.sent_messages, sm::description("Total number of messages sent"), {group_l}),
+        sm::make_counter("nr_timeouts", _current_stats.timeout, sm::description("Total number of reply timeouts"), {group_l}),
+    });
 }
 
 stats_group::~stats_group() {

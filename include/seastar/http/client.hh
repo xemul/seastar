@@ -155,6 +155,23 @@ public:
 };
 
 /**
+ * \brief Parameters for retrying failed requests
+ *
+ * In case request fails due to transport errors, the client may retry it on the caller's
+ * bahalf and this param structure controls the way these attempts are made
+ *
+ * \param max_count -- the maximum number of retry attempts. Default is zero, so no
+ *                     retries would happen
+ * \param pause_base -- client uses exponentially increasing delays between retry attempts
+ *                      and this is the base value for the exponent. First attempt would
+ *                      happen after this duration. Default is 100ms
+ */
+struct retry_param {
+    unsigned max_count = 0;
+    std::chrono::milliseconds pause_base = std::chrono::milliseconds(100);
+};
+
+/**
  * \brief Class client wraps communications using HTTP protocol
  *
  * The class allows making HTTP requests and handling replies. It's up to the caller to
@@ -241,9 +258,10 @@ public:
      * \param req -- request to be sent
      * \param handle -- the response handler
      * \param expected -- the expected reply status code
+     * \param retry -- retry on failure parameters
      *
      */
-    future<> make_request(request req, reply_handler handle, reply::status_type expected = reply::status_type::ok);
+    future<> make_request(request req, reply_handler handle, reply::status_type expected = reply::status_type::ok, retry_param retry = retry_param{});
 
     /**
      * \brief Updates the maximum number of connections a client may have

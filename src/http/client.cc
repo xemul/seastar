@@ -232,6 +232,7 @@ client::client(socket_address addr, shared_ptr<tls::certificate_credentials> cre
 client::client(std::unique_ptr<connection_factory> f, unsigned max_connections)
         : _new_connections(std::move(f))
         , _max_connections(max_connections)
+        , _authorize([] (request&) { /* do nothing */ })
 {
 }
 
@@ -298,6 +299,10 @@ future<> client::set_maximum_connections(unsigned nr) {
     return shrink_connections();
 }
 
+void client::set_authorizer(authorizer auth) {
+    _authorize = std::move(auth);
+}
+
 template <typename Fn>
 SEASTAR_CONCEPT( requires std::invocable<Fn, connection&> )
 auto client::with_connection(Fn&& fn) {
@@ -337,7 +342,8 @@ future<> client::make_request(request req, reply_handler handle, reply::status_t
 }
 
 future<> client::do_make_request(request& req, reply_handler& handle, reply::status_type expected) {
-    return with_connection([&req, &handle, expected] (connection& con) mutable {
+    return with_connection([this, &req, &handle, expected] (connection& con) mutable {
+        _authorize(req);
         return con.do_make_request(req).then([&con, &handle, expected] (connection::reply_ptr reply) mutable {
             auto& rep = *reply;
             if (rep._status != expected) {

@@ -126,7 +126,7 @@ public:
     future<> close();
 
 private:
-    future<reply_ptr> do_make_request(request rq);
+    future<reply_ptr> do_make_request(request& rq);
     void setup_request(request& rq);
     future<> send_request_head(const request& rq);
     future<reply_ptr> maybe_wait_for_continue(const request& req);
@@ -155,6 +155,23 @@ public:
 };
 
 /**
+ * \brief Parameters for retrying failed requests
+ *
+ * In case request fails due to transport errors, the client may retry it on the caller's
+ * bahalf and this param structure controls the way these attempts are made
+ *
+ * \param max_count -- the maximum number of retry attempts. Default is zero, so no
+ *                     retries would happen
+ * \param pause_base -- client uses exponentially increasing delays between retry attempts
+ *                      and this is the base value for the exponent. First attempt would
+ *                      happen after this duration. Default is 100ms
+ */
+struct retry_param {
+    unsigned max_count = 0;
+    std::chrono::milliseconds pause_base = std::chrono::milliseconds(100);
+};
+
+/**
  * \brief Class client wraps communications using HTTP protocol
  *
  * The class allows making HTTP requests and handling replies. It's up to the caller to
@@ -166,6 +183,10 @@ public:
  */
 
 class client {
+public:
+    using reply_handler = noncopyable_function<future<>(const reply&, input_stream<char>&& body)>;
+
+private:
     friend class http::internal::client_ref;
     using connections_list_t = bi::list<connection, bi::member_hook<connection, typename connection::hook_t, &connection::_hook>, bi::constant_time_size<false>>;
     static constexpr unsigned default_max_connections = 100;
@@ -187,8 +208,9 @@ class client {
     SEASTAR_CONCEPT( requires std::invocable<Fn, connection&> )
     auto with_connection(Fn&& fn);
 
+    future<> do_make_request(request& req, reply_handler& handle, reply::status_type expected);
+
 public:
-    using reply_handler = noncopyable_function<future<>(const reply&, input_stream<char>&& body)>;
     /**
      * \brief Construct a simple client
      *
@@ -236,9 +258,10 @@ public:
      * \param req -- request to be sent
      * \param handle -- the response handler
      * \param expected -- the expected reply status code
+     * \param retry -- retry on failure parameters
      *
      */
-    future<> make_request(request req, reply_handler handle, reply::status_type expected = reply::status_type::ok);
+    future<> make_request(request req, reply_handler handle, reply::status_type expected = reply::status_type::ok, retry_param retry = retry_param{});
 
     /**
      * \brief Updates the maximum number of connections a client may have

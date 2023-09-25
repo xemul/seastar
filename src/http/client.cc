@@ -26,6 +26,7 @@ module seastar;
 #include <seastar/core/loop.hh>
 #include <seastar/core/when_all.hh>
 #include <seastar/core/reactor.hh>
+#include <seastar/core/sleep.hh>
 #include <seastar/net/tls.hh>
 #include <seastar/http/client.hh>
 #include <seastar/http/request.hh>
@@ -129,7 +130,12 @@ future<connection::reply_ptr> connection::recv_reply() {
         parser.init();
         return _read_buf.consume(parser).then([this, &parser] {
             if (parser.eof()) {
-                throw std::runtime_error("Invalid response");
+                http_log.trace("Parsing responce EOFed");
+                throw std::system_error(ECONNABORTED, std::system_category());
+            }
+            if (parser.failed()) {
+                http_log.trace("Parsing responce failed");
+                throw std::runtime_error("Invalid http server response");
             }
 
             auto resp = parser.get_parsed_response();
@@ -143,19 +149,17 @@ future<connection::reply_ptr> connection::recv_reply() {
     });
 }
 
-future<connection::reply_ptr> connection::do_make_request(request req) {
-    return do_with(std::move(req), [this] (auto& req) {
-        setup_request(req);
-        return send_request_head(req).then([this, &req] {
-            return maybe_wait_for_continue(req).then([this, &req] (reply_ptr cont) {
-                if (cont) {
-                    return make_ready_future<reply_ptr>(std::move(cont));
-                }
+future<connection::reply_ptr> connection::do_make_request(request& req) {
+    setup_request(req);
+    return send_request_head(req).then([this, &req] {
+        return maybe_wait_for_continue(req).then([this, &req] (reply_ptr cont) {
+            if (cont) {
+                return make_ready_future<reply_ptr>(std::move(cont));
+            }
 
-                return write_body(req).then([this] {
-                    return _write_buf.flush().then([this] {
-                        return recv_reply();
-                    });
+            return write_body(req).then([this] {
+                return _write_buf.flush().then([this] {
+                    return recv_reply();
                 });
             });
         });
@@ -163,8 +167,10 @@ future<connection::reply_ptr> connection::do_make_request(request req) {
 }
 
 future<reply> connection::make_request(request req) {
-    return do_make_request(std::move(req)).then([] (reply_ptr rep) {
-        return make_ready_future<reply>(std::move(*rep));
+    return do_with(std::move(req), [this] (auto& req) {
+        return do_make_request(req).then([] (reply_ptr rep) {
+            return make_ready_future<reply>(std::move(*rep));
+        });
     });
 }
 
@@ -302,9 +308,37 @@ auto client::with_connection(Fn&& fn) {
     });
 }
 
-future<> client::make_request(request req, reply_handler handle, reply::status_type expected) {
-    return with_connection([req = std::move(req), handle = std::move(handle), expected] (connection& con) mutable {
-        return con.do_make_request(std::move(req)).then([&con, expected, handle = std::move(handle)] (connection::reply_ptr reply) mutable {
+future<> client::make_request(request req, reply_handler handle, reply::status_type expected, retry_param retry) {
+    return do_with(std::move(req), std::move(handle), 0u, [this, expected, retry] (request& req, auto& handle, unsigned& attempt) mutable {
+        // Default fast-path
+        if (retry.max_count == 0) {
+            return do_make_request(req, handle, expected);
+        }
+
+        return repeat([this, &req, &handle, &attempt, expected, retry] () mutable {
+            return do_make_request(req, handle, expected).then_wrapped([&attempt, retry] (auto f) {
+                try {
+                    f.get();
+                } catch (std::system_error& ex) {
+                    if (ex.code().value() == EPIPE || ex.code().value() == ECONNABORTED) {
+                        if (attempt++ < retry.max_count) {
+                            http_log.trace("Restarting request {} attempt due to {}", attempt, ex);
+                            return seastar::sleep(retry.pause_base * (1 << attempt)).then([] {
+                                return make_ready_future<stop_iteration>(stop_iteration::no);
+                            });
+                        }
+                    }
+                    return make_exception_future<stop_iteration>(ex);
+                }
+                return make_ready_future<stop_iteration>(stop_iteration::yes);
+            });
+        });
+    });
+}
+
+future<> client::do_make_request(request& req, reply_handler& handle, reply::status_type expected) {
+    return with_connection([&req, &handle, expected] (connection& con) mutable {
+        return con.do_make_request(req).then([&con, &handle, expected] (connection::reply_ptr reply) mutable {
             auto& rep = *reply;
             if (rep._status != expected) {
                 if (!http_log.is_enabled(log_level::debug)) {

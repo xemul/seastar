@@ -615,6 +615,7 @@ std::atomic<manual_clock::rep> manual_clock::_now;
 // Base version where this works; some filesystems were only fixed later, so
 // this value is mixed in with filesystem-provided values later.
 bool aio_nowait_supported = internal::kernel_uname().whitelisted({"4.13"});
+bool enable_stack_unwinding_in_exception = true;
 
 static bool sched_debug() {
     return false;
@@ -850,7 +851,9 @@ static void print_with_backtrace(backtrace_buffer& buf, bool oneline) noexcept {
         buf.append(current_scheduling_group().name().c_str());
     }
 
-  if (!oneline) {
+  if (!enable_stack_unwinding_in_exception && in_exception_unwinding()) {
+      buf.append(". Backtrace: suspended due to exception\n");
+  } else if (!oneline) {
     buf.append(".\nBacktrace:\n");
     buf.append_backtrace();
   } else {
@@ -3786,6 +3789,11 @@ reactor_options::reactor_options(program_options::option_group* parent_group)
     , heapprof(*this, "heapprof", program_options::unused{})
 #endif
     , no_handle_interrupt(*this, "no-handle-interrupt", "ignore SIGINT (for gdb)")
+#ifndef SEASTAR_NO_EXCEPTION_HACK
+    , enable_stack_unwinding_in_exception(*this, "enable-stack-unwinding-in-exception", true, "print backtrace in stall detector and segmentation fault handler if happens while handling exception")
+#else
+    , enable_stack_unwinding_in_exception(*this, "enable-stack-unwinding-in-exception", program_options::unused{})
+#endif
 {
 }
 
@@ -4349,6 +4357,9 @@ void smp::configure(const smp_options& smp_opts, const reactor_options& reactor_
     };
 
     aio_nowait_supported = reactor_opts.linux_aio_nowait.get_value();
+#ifndef SEASTAR_NO_EXCEPTION_HACK
+    enable_stack_unwinding_in_exception = reactor_opts.enable_stack_unwinding_in_exception.get_value();
+#endif
     std::mutex mtx;
 
 #ifdef SEASTAR_HEAPPROF

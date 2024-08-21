@@ -180,6 +180,11 @@ struct reactor_options : public program_options::option_group {
     program_options::value<unsigned> heapprof;
     /// Ignore SIGINT (for gdb).
     program_options::value<> no_handle_interrupt;
+    /// Enable printing backtraces by stall detector and segv handler when happens while handling exception
+    ///
+    /// Default: \p true.
+    /// \note Unused when seastar is compiled without the exception scaling support.
+    program_options::value<bool> enable_stack_unwinding_in_exception;
 
     /// \cond internal
     std::string _argv0;

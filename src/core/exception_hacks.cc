@@ -122,6 +122,13 @@ void log_exception_trace() noexcept {
 void log_exception_trace() noexcept {}
 #endif
 
+static thread_local uint32_t unwind_exception_count = 0;
+
+bool in_exception_unwinding() noexcept {
+    return unwind_exception_count > 0;
+    std::atomic_signal_fence(std::memory_order_acquire);
+}
+
 }
 
 extern "C"
@@ -162,6 +169,14 @@ int _Unwind_RaiseException(struct ::_Unwind_Exception *h) {
         seastar::internal::increase_thrown_exceptions_counter();
         seastar::log_exception_trace();
     }
-    return org(h);
+
+    seastar::unwind_exception_count++;
+    // increasing unwind_exception_count should happen before pushing into stack
+    std::atomic_signal_fence(std::memory_order_release);
+    auto ret = org(h);
+    // popping from stack should happen before decreasing unwind_exception_count
+    std::atomic_signal_fence(std::memory_order_release);
+    seastar::unwind_exception_count--;
+    return ret;
 }
 #endif

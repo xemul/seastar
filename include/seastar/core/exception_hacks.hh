@@ -23,4 +23,5 @@
 
 namespace seastar {
 void init_phdr_cache();
+bool in_exception_unwinding() noexcept;
 }

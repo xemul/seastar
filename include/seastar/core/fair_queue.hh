@@ -327,6 +327,7 @@ private:
     fair_queue_ticket _resources_executing;
     fair_queue_ticket _resources_queued;
     priority_queue _handles;
+    std::vector<priority_class_ptr> _activating;
     std::vector<std::unique_ptr<priority_class_data>> _priority_classes;
     size_t _nr_classes = 0;
     capacity_t _last_accumulated = 0;

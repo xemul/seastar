@@ -951,10 +951,18 @@ future<size_t> io_queue::submit_io_write(internal::priority_class pc, size_t len
 }
 
 void io_queue::poll_io_queue() {
-    for (auto&& st : _streams) {
-        st.dispatch_requests([] (fair_queue_entry& fqe) {
-            queued_io_request::from_fq_entry(fqe).dispatch();
-        });
+    if (get_config().controller_mode) {
+        for (auto&& st : _streams) {
+            st.drain_queues([] (fair_queue_entry& fqe) {
+                queued_io_request::from_fq_entry(fqe).dispatch();
+            });
+        }
+    } else {
+        for (auto&& st : _streams) {
+            st.dispatch_requests([] (fair_queue_entry& fqe) {
+                queued_io_request::from_fq_entry(fqe).dispatch();
+            });
+        }
     }
 }
 
@@ -977,10 +985,14 @@ void io_queue::complete_cancelled_request(queued_io_request& req) noexcept {
 io_queue::clock_type::time_point io_queue::next_pending_aio() const noexcept {
     clock_type::time_point next = clock_type::time_point::max();
 
-    for (const auto& s : _streams) {
-        clock_type::time_point n = s.next_pending_aio();
-        if (n < next) {
-            next = std::move(n);
+    // In controller mode, if we get here, sleep can be delayed arbitrary
+    // long, the class replenish timer will wake reactor for us
+    if (!get_config().controller_mode) {
+        for (const auto& s : _streams) {
+            clock_type::time_point n = s.next_pending_aio();
+            if (n < next) {
+                next = std::move(n);
+            }
         }
     }
 

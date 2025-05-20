@@ -427,6 +427,7 @@ public:
 
     /// Try to execute new requests if there is capacity left in the queue.
     void dispatch_requests(std::function<void(fair_queue_entry&)> cb);
+    void drain_queues(std::function<void(fair_queue_entry&)> cb);
 
     clock_type::time_point next_pending_aio() const noexcept;
 

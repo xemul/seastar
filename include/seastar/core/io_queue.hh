@@ -147,6 +147,9 @@ public:
         double flow_ratio_backpressure_threshold = 1.1;
         std::chrono::milliseconds stall_threshold = std::chrono::milliseconds(100);
         bool controller_mode = false;
+        // Default to 1GB/s and 1MIOPS
+        unsigned long disk_bandwidth = 1 << 30;
+        unsigned long disk_iops = 1000000;
     };
 
     io_queue(io_group_ptr group, internal::io_sink& sink);
@@ -225,6 +228,7 @@ private:
 
     static fair_group::config make_fair_group_config(const io_queue::config& qcfg) noexcept;
     priority_class_data& find_or_create_class(internal::priority_class pc);
+    void update_bandwidth_demand(internal::priority_class pc, uint64_t bw);
 };
 
 inline const io_queue::config& io_queue::get_config() const noexcept {

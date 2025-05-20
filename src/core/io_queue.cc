@@ -71,6 +71,7 @@ struct io_group::priority_class_data {
     static constexpr uint64_t bandwidth_burst_in_blocks = 10 << (20 - io_queue::block_size_shift); // 10MB
     static constexpr uint64_t bandwidth_threshold_in_blocks = 128 << (10 - io_queue::block_size_shift); // 128kB
     token_bucket_t tb;
+    uint64_t bandwidth_demand = 0;
 
     uint64_t tokens(size_t length) const noexcept {
         return length >> io_queue::block_size_shift;
@@ -1011,10 +1012,68 @@ io_queue::update_shares_for_class(internal::priority_class pc, size_t new_shares
 future<> io_queue::update_bandwidth_for_class(internal::priority_class pc, uint64_t new_bandwidth) {
     return futurize_invoke([this, pc, new_bandwidth] {
         if (_group->_allocated_on == this_shard_id()) {
-            auto& pclass = find_or_create_class(pc);
-            pclass.update_bandwidth(new_bandwidth);
+            if (get_config().controller_mode) {
+                _group->update_bandwidth_demand(pc, new_bandwidth);
+            } else {
+                auto& pclass = find_or_create_class(pc);
+                pclass.update_bandwidth(new_bandwidth);
+            }
         }
     });
+}
+
+// This method makes sure that for every i = [0... n) the following
+// condition is true:
+//
+//   r - sum(l[j], j=[0..n), j!=i) >= d[i]
+//
+// In other words: given "r" units of a resource and "d" demands
+// for "n" consumers, calculate limits "l" that will guarantee the
+// demands.
+//
+// There's a pitfal in this formula. It may generate "l"-s that
+//
+//   sum(l[i], i=[0..n)) >= r
+static void split_resource(uint64_t r, unsigned n, uint64_t *d, uint64_t *l)
+{
+    if (n == 1) {
+        l[0] = r;
+        return;
+    }
+
+    uint64_t sum = 0;
+    for (unsigned i = 0; i < n; i++) {
+        sum += r - d[i];
+    }
+    for (unsigned i = 0; i < n; i++) {
+        l[i] = (sum - (r - d[i]) - (n - 2) * (r - d[i]))/(n - 1);
+    }
+}
+
+void io_group::update_bandwidth_demand(internal::priority_class pc, uint64_t new_bandwidth) {
+    io_log.debug("Updating bandwidth for classes, limit {}Mb/s", _config.disk_bandwidth >> 20);
+
+    std::array<uint64_t, max_scheduling_groups()> demands;
+    find_or_create_class(pc).bandwidth_demand = new_bandwidth;
+    unsigned i = 0;
+    for (auto& pclass : _priority_classes) {
+        if (pclass) {
+            demands[i] = pclass->bandwidth_demand;
+            i++;
+        }
+    }
+    std::array<uint64_t, max_scheduling_groups()> limits;
+    SEASTAR_ASSERT(i >= 1);
+    split_resource(_config.disk_bandwidth, i, demands.data(), limits.data());
+
+    i = 0;
+    for (auto& pclass : _priority_classes) {
+        if (pclass) {
+            io_log.debug("Set bandwidth for class {}Mb/s (demand {}Mb/s)", limits[i] >> 20, demands[i] >> 20);
+            pclass->update_bandwidth(limits[i]);
+            i++;
+        }
+    }
 }
 
 void

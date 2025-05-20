@@ -1067,9 +1067,11 @@ void io_group::update_bandwidth_demand(internal::priority_class pc, uint64_t new
     split_resource(_config.disk_bandwidth, i, demands.data(), limits.data());
 
     i = 0;
-    for (auto& pclass : _priority_classes) {
+    for (unsigned c = 0; c < _priority_classes.size(); c++) {
+        auto& pclass = _priority_classes[c];
         if (pclass) {
-            io_log.debug("Set bandwidth for class {}Mb/s (demand {}Mb/s)", limits[i] >> 20, demands[i] >> 20);
+            auto [ shares, name ] = get_class_info(c);
+            io_log.debug("Set bandwidth for class {}: {}Mb/s (demand {}Mb/s)", name, limits[i] >> 20, demands[i] >> 20);
             pclass->update_bandwidth(limits[i]);
             i++;
         }

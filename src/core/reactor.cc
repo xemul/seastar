@@ -3869,6 +3869,7 @@ smp_options::smp_options(program_options::option_group* parent_group)
 #endif
     , io_properties_file(*this, "io-properties-file", {}, "path to a YAML file describing the characteristics of the I/O Subsystem")
     , io_properties(*this, "io-properties", {}, "a YAML string describing the characteristics of the I/O Subsystem")
+    , io_controller_mode(*this, "io-controller", false, "enable IO-controller mode")
     , mbind(*this, "mbind", true, "enable mbind")
 #ifndef SEASTAR_NO_EXCEPTION_HACK
     , enable_glibc_exception_scaling_workaround(*this, "enable-glibc-exception-scaling-workaround", true, "enable workaround for glibc/gcc c++ exception scalablity problem")
@@ -4100,6 +4101,7 @@ private:
     std::chrono::duration<double> _latency_goal;
     std::chrono::milliseconds _stall_threshold;
     double _flow_ratio_backpressure_threshold;
+    bool controller_mode = false;
 
 public:
     explicit disk_config_params(unsigned max_queues) noexcept
@@ -4142,6 +4144,10 @@ public:
         }
         if (smp_opts.io_properties_file && smp_opts.io_properties) {
             throw std::runtime_error("Both io-properties and io-properties-file specified. Don't know which to trust!");
+        }
+
+        if (smp_opts.io_controller_mode) {
+            controller_mode = smp_opts.io_controller_mode.get_value();
         }
 
         std::optional<YAML::Node> doc;
@@ -4209,10 +4215,11 @@ public:
 
     struct io_queue::config generate_config(unsigned q, unsigned nr_groups) const {
         const disk_params& p = _disks.at(q);
-        seastar_logger.debug("generate_config queue-id: {}", q);
+        seastar_logger.debug("generate_config queue-id: {} (mode: {})", q, controller_mode ? "controller" : "fair-queue");
         struct io_queue::config cfg;
 
         cfg.id = q;
+        cfg.controller_mode = controller_mode;
 
         if (p.read_bytes_rate != std::numeric_limits<uint64_t>::max()) {
             cfg.blocks_count_rate = (io_queue::read_request_base_count * (unsigned long)per_io_group(p.read_bytes_rate, nr_groups)) >> io_queue::block_size_shift;

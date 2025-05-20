@@ -442,6 +442,30 @@ void fair_queue::dispatch_requests(std::function<void(fair_queue_entry&)> cb) {
     // can't have resource-saving guarantees anyway.
 }
 
+void fair_queue::drain_queues(std::function<void(fair_queue_entry&)> cb) {
+    while (!_handles.empty()) {
+        priority_class_data& h = *_handles.top();
+        if (h._queue.empty() || !h._plugged) {
+            pop_priority_class(h);
+            continue;
+        }
+
+        auto& req = h._queue.front();
+        pop_priority_class(h);
+        h._queue.pop_front();
+        // Not strictly necessary, but good to see in metrics
+        // Also some RR-ish shuffling of requests while draining may
+        // result in more uniform "overwhelming delays" in disk
+        _last_accumulated = std::max(h._accumulated, _last_accumulated);
+        h._accumulated += req._capacity;
+        h._pure_accumulated += req._capacity;
+        cb(req);
+        if (h._plugged && !h._queue.empty()) {
+            push_priority_class(h);
+        }
+    }
+}
+
 std::vector<seastar::metrics::impl::metric_definition_impl> fair_queue::metrics(class_id c) {
     namespace sm = seastar::metrics;
     priority_class_data& pc = *_priority_classes[c];

@@ -72,6 +72,8 @@ struct smp_options : public program_options::option_group {
     program_options::value<std::string> io_properties_file;
     /// A YAML string describing the characteristics of the I/O Subsystem.
     program_options::value<std::string> io_properties;
+    /// IO-controller mode of dispatching
+    program_options::value<bool> io_controller_mode;
     /// Enable mbind.
     ///
     /// Default: \p true.

@@ -230,6 +230,7 @@ private:
     static fair_group::config make_fair_group_config(const io_queue::config& qcfg) noexcept;
     priority_class_data& find_or_create_class(internal::priority_class pc);
     void update_bandwidth_demand(internal::priority_class pc, uint64_t bw);
+    void update_iops_demand(internal::priority_class pc, uint64_t bw);
 };
 
 inline const io_queue::config& io_queue::get_config() const noexcept {

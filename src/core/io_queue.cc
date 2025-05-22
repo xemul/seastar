@@ -75,6 +75,7 @@ struct io_group::priority_class_data {
     static constexpr uint64_t iops_threshold = 2;
     token_bucket_t iops_tb;
     uint64_t bandwidth_demand = 0;
+    uint64_t iops_demand = 0;
 
     uint64_t bw_tokens(size_t length) const noexcept {
         return length >> io_queue::block_size_shift;
@@ -1113,11 +1114,44 @@ void io_group::update_bandwidth_demand(internal::priority_class pc, uint64_t new
 future<> io_queue::update_iops_for_class(internal::priority_class pc, uint64_t new_iops) {
     return futurize_invoke([this, pc, new_iops] {
         if (_group->_allocated_on == this_shard_id()) {
-            auto& pclass = find_or_create_class(pc);
-            pclass.update_iops(new_iops);
+            if (get_config().controller_mode) {
+                _group->update_iops_demand(pc, new_iops);
+            } else {
+                auto& pclass = find_or_create_class(pc);
+                pclass.update_iops(new_iops);
+            }
         }
     });
 }
+
+void io_group::update_iops_demand(internal::priority_class pc, uint64_t new_iops) {
+    io_log.debug("Updating IOPS for classes, limit {}", _config.disk_iops);
+
+    std::array<uint64_t, max_scheduling_groups()> demands;
+    find_or_create_class(pc).iops_demand = new_iops;
+    unsigned i = 0;
+    for (auto& pclass : _priority_classes) {
+        if (pclass) {
+            demands[i] = pclass->iops_demand;
+            i++;
+        }
+    }
+    std::array<uint64_t, max_scheduling_groups()> limits;
+    SEASTAR_ASSERT(i >= 1);
+    split_resource(_config.disk_iops, i, demands.data(), limits.data());
+
+    i = 0;
+    for (unsigned c = 0; c < _priority_classes.size(); c++) {
+        auto& pclass = _priority_classes[c];
+        if (pclass) {
+            auto [ shares, name ] = get_class_info(c);
+            io_log.debug("Set IOPS for class {}: {} (demand {}Mb/s)", name, limits[i] >> 20, demands[i] >> 20);
+            pclass->update_iops_rate(limits[i]);
+            i++;
+        }
+    }
+}
+
 void
 io_queue::rename_priority_class(internal::priority_class pc, sstring new_name) {
     if (_priority_classes.size() > pc.id() &&

@@ -71,8 +71,8 @@ struct io_group::priority_class_data {
     static constexpr uint64_t bandwidth_burst_in_blocks = 10 << (20 - io_queue::block_size_shift); // 10MB
     static constexpr uint64_t bandwidth_threshold_in_blocks = 128 << (10 - io_queue::block_size_shift); // 128kB
     token_bucket_t bw_tb;
-    static constexpr uint64_t iops_burst_limit = 1'000'000;
-    static constexpr uint64_t iops_threshold = 10;
+    static constexpr uint64_t iops_burst_limit = 100;
+    static constexpr uint64_t iops_threshold = 2;
     token_bucket_t iops_tb;
     uint64_t bandwidth_demand = 0;
 

@@ -259,6 +259,14 @@ future<> reactor::update_bandwidth_for_queues(internal::priority_class pc, uint6
     });
 }
 
+future<> reactor::update_iops_for_queues(internal::priority_class pc, uint64_t iops) {
+    return smp::invoke_on_all([pc, iops = iops / _num_io_groups] {
+        return parallel_for_each(engine()._io_queues, [pc, iops] (auto& queue) {
+            return queue.second->update_iops_for_class(pc, iops);
+        });
+    });
+}
+
 void reactor::rename_queues(internal::priority_class pc, sstring new_name) {
     for (auto&& queue : _io_queues) {
         queue.second->rename_priority_class(pc, new_name);
@@ -5153,6 +5161,10 @@ scheduling_group::set_shares(float shares) noexcept {
 
 future<> scheduling_group::update_io_bandwidth(uint64_t bandwidth) const {
     return engine().update_bandwidth_for_queues(internal::priority_class(*this), bandwidth);
+}
+
+future<> scheduling_group::update_io_rate(uint64_t iops_rate) const {
+    return engine().update_iops_for_queues(internal::priority_class(*this), iops_rate);
 }
 
 future<scheduling_group>

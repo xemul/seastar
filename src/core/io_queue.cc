@@ -71,11 +71,16 @@ struct io_group::priority_class_data {
     static constexpr uint64_t bandwidth_burst_in_blocks = 10 << (20 - io_queue::block_size_shift); // 10MB
     static constexpr uint64_t bandwidth_threshold_in_blocks = 128 << (10 - io_queue::block_size_shift); // 128kB
     token_bucket_t bw_tb;
+
     static constexpr uint64_t iops_burst_limit = 100;
     static constexpr uint64_t iops_threshold = 2;
     token_bucket_t iops_tb;
+
     uint64_t bandwidth_demand = 0;
     uint64_t iops_demand = 0;
+
+
+    metrics::metric_groups metric_groups_io_group;
 
     uint64_t bw_tokens(size_t length) const noexcept {
         return length >> io_queue::block_size_shift;
@@ -827,6 +832,36 @@ io_queue::priority_class_data& io_queue::find_or_create_class(internal::priority
     return *_priority_classes[id];
 }
 
+
+void io_group::register_stats(sstring name, io_group::priority_class_data& pc) {
+    namespace sm = seastar::metrics;
+
+    auto owner_l = sm::shard_label(this_shard_id());
+    auto mnt_l = sm::label("mountpoint")("undefined");
+    auto class_l = sm::label("class")(name);
+    auto group_l = sm::label("iogroup")(to_sstring(_allocated_on));
+
+    std::vector<sm::impl::metric_definition_impl> io_group_metric({
+            sm::make_counter("bandwidth_limit", [&pc, this] {
+                    return pc.bw_tb.rate();
+                }, sm::description("bandwidth limit")),
+            sm::make_counter("iops_limit", [&pc, this] {
+                    return pc.iops_tb.rate();
+                }, sm::description("iops limit"))
+            });
+
+    std::vector<sm::metric_definition> metrics;
+
+    for (auto&& m : io_group_metric) {
+        m(owner_l)(mnt_l)(class_l)(group_l);
+        metrics.emplace_back(std::move(m));
+    }
+
+    sm::metric_groups new_metrics;
+    new_metrics.add_group("io_group", std::move(metrics));
+    pc.metric_groups_io_group = std::exchange(new_metrics, {});
+}
+
 io_group::priority_class_data& io_group::find_or_create_class(internal::priority_class pc) {
     std::lock_guard _(_lock);
 
@@ -838,6 +873,8 @@ io_group::priority_class_data& io_group::find_or_create_class(internal::priority
         auto pg = std::make_unique<priority_class_data>();
         _priority_classes[id] = std::move(pg);
     }
+
+    register_stats("io_group_name", *_priority_classes[id]);
 
     return *_priority_classes[id];
 }

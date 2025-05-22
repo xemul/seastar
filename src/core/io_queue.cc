@@ -837,7 +837,7 @@ void io_group::register_stats(sstring name, io_group::priority_class_data& pc) {
     namespace sm = seastar::metrics;
 
     auto owner_l = sm::shard_label(this_shard_id());
-    auto mnt_l = sm::label("mountpoint")("undefined");
+    auto mnt_l = sm::label("mountpoint")(_config.mountpoint);
     auto class_l = sm::label("class")(name);
     auto group_l = sm::label("iogroup")(to_sstring(_allocated_on));
 
@@ -871,7 +871,8 @@ io_group::priority_class_data& io_group::find_or_create_class(internal::priority
     }
     if (!_priority_classes[id]) {
         auto pg = std::make_unique<priority_class_data>();
-        register_stats("io_group_name", *pg);
+        auto [ shares, name ] = get_class_info(pc.id());
+        register_stats(name, *pg);
         _priority_classes[id] = std::move(pg);
     }
 

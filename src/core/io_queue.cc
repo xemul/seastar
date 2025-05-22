@@ -871,10 +871,9 @@ io_group::priority_class_data& io_group::find_or_create_class(internal::priority
     }
     if (!_priority_classes[id]) {
         auto pg = std::make_unique<priority_class_data>();
+        register_stats("io_group_name", *pg);
         _priority_classes[id] = std::move(pg);
     }
-
-    register_stats("io_group_name", *_priority_classes[id]);
 
     return *_priority_classes[id];
 }

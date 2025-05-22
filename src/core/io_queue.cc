@@ -201,13 +201,9 @@ public:
         auto iops_ph = _group.iops_tb.grab(iops_tokens);
         auto iops_delta = _group.iops_tb.deficiency(iops_ph);
 
-        if (bw_delta > 0) {
-            _bw_replenish_head = bw_ph;
-        }
-        if (iops_delta > 0) {
-            _iops_replenish_head = iops_ph;
-        }
         if (bw_delta > 0 || iops_delta > 0) {
+            _bw_replenish_head = bw_ph;
+            _iops_replenish_head = iops_ph;
             _queue.throttle_priority_class(*this);
             _buckets_replenish.arm(
                 std::chrono::duration_cast<std::chrono::microseconds>(std::min(_group.iops_tb.duration_for(iops_delta), _group.bw_tb.duration_for(bw_delta))));

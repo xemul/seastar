@@ -842,10 +842,10 @@ void io_group::register_stats(sstring name, io_group::priority_class_data& pc) {
     auto group_l = sm::label("iogroup")(to_sstring(_allocated_on));
 
     std::vector<sm::impl::metric_definition_impl> io_group_metric({
-            sm::make_counter("bandwidth_limit", [&pc, this] {
+            sm::make_counter("bandwidth_limit", [&pc] {
                     return pc.bw_tb.rate() << io_queue::block_size_shift; // token bucket counts 1 token per block
                 }, sm::description("bandwidth limit in BPS")),
-            sm::make_counter("iops_limit", [&pc, this] {
+            sm::make_counter("iops_limit", [&pc] {
                     return pc.iops_tb.rate();
                 }, sm::description("iops limit"))
             });

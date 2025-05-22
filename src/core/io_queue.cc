@@ -101,7 +101,7 @@ struct io_group::priority_class_data {
 
     void update_iops_rate(uint64_t iops) {
         // TODO: Somehow we have to protect from setting max iops to some unreasonable value
-        iops_tb.update_rate(bw_tokens(iops));
+        iops_tb.update_rate(iops);
     }
 
     priority_class_data() noexcept

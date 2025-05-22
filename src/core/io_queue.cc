@@ -1145,7 +1145,7 @@ void io_group::update_iops_demand(internal::priority_class pc, uint64_t new_iops
         auto& pclass = _priority_classes[c];
         if (pclass) {
             auto [ shares, name ] = get_class_info(c);
-            io_log.debug("Set IOPS for class {}: {} (demand {}Mb/s)", name, limits[i] >> 20, demands[i] >> 20);
+            io_log.debug("Set IOPS for class {}: {} (demand {})", name, limits[i], demands[i]);
             pclass->update_iops_rate(limits[i]);
             i++;
         }

@@ -189,6 +189,7 @@ public:
 
     void update_shares_for_class(internal::priority_class pc, size_t new_shares);
     future<> update_bandwidth_for_class(internal::priority_class pc, uint64_t new_bandwidth);
+    future<> update_iops_for_class(internal::priority_class pc, uint64_t new_iops);
     void rename_priority_class(internal::priority_class pc, sstring new_name);
     void throttle_priority_class(const priority_class_data& pc) noexcept;
     void unthrottle_priority_class(const priority_class_data& pc) noexcept;

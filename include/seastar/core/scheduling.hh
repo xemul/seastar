@@ -342,7 +342,14 @@ public:
     /// \param bandwidth the new bandwidth value in bytes/second
     /// \return a future that is ready when the bandwidth update is applied
     future<> update_io_bandwidth(uint64_t bandwidth) const;
-
+    /// \brief Updates the current IOPS rate for a given scheduling group
+    ///
+    /// The rate applied is NOT shard-local, instead it is applied so that
+    /// all shards cannot consume more IO operations-per-second
+    ///
+    /// \param iops_rate the new rate value in operations/second
+    /// \return a future that is ready when the op/s update is applied
+    future<> update_io_rate(uint64_t iops_rate) const;
     friend future<scheduling_group> create_scheduling_group(sstring name, sstring shortname, float shares) noexcept;
     friend future<> destroy_scheduling_group(scheduling_group sg) noexcept;
     friend future<> rename_scheduling_group(scheduling_group sg, sstring new_name, sstring new_shortname) noexcept;

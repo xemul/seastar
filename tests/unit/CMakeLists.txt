@@ -427,7 +427,7 @@ seastar_add_test (app-template
   SOURCES app-template_test.cc)
 
 seastar_add_test (socket
-  SOURCES socket_test.cc
+  SOURCES socket_test.cc socket_shared.cc
   # https://github.com/scylladb/seastar/issues/2302
   RUN_ARGS --reactor-backend linux-aio)
 
@@ -719,7 +719,7 @@ add_custom_target (https_server
 
 seastar_add_test (tls
   DEPENDS tls_files testcrt othercrt mtls_certs https_server
-  SOURCES tls_test.cc
+  SOURCES tls_test.cc socket_shared.cc
   LIBRARIES Boost::filesystem
   WORKING_DIRECTORY ${Seastar_BINARY_DIR})
 

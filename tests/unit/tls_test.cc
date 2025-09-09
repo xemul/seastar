@@ -48,6 +48,7 @@
 
 #include "loopback_socket.hh"
 #include "tmpdir.hh"
+#include "socket_shared.hh"
 
 #include <gnutls/gnutls.h>
 
@@ -2096,4 +2097,40 @@ SEASTAR_THREAD_TEST_CASE(test_send_recv_alloc_limits) {
 
         BOOST_CHECK_EQUAL(stats_after.large_allocations(), stats_before.large_allocations());
     }
+}
+
+namespace {
+
+std::pair<connected_socket, connected_socket> tls_socketpair() {
+    auto certs = ::make_shared<tls::server_credentials>(::make_shared<tls::dh_params>());
+    certs->set_x509_key_file(certfile("test.crt"), certfile("test.key"), tls::x509_crt_format::PEM).get();
+
+    ::listen_options opts;
+    opts.reuse_address = true;
+    auto addr = ::make_ipv4_address( {0x7f000001, 4712});
+    auto ss = tls::listen(certs, addr, opts);
+    tls::credentials_builder b;
+    b.set_x509_trust_file(certfile("catest.pem"), tls::x509_crt_format::PEM).get();
+
+    auto cf = tls::connect(b.build_certificate_credentials(), addr);
+    auto ar = ss.accept().get();
+    auto cs = cf.get();
+
+    return std::make_pair(std::move(ar.connection), std::move(cs));
+}
+
+std::pair<connected_socket, connected_socket> tls_handshaked_socketpair() {
+    auto p = tls_socketpair();
+    when_all(tls::force_rehandshake(p.first), tls::force_rehandshake(p.second)).get();
+    return p;
+}
+
+}
+
+SEASTAR_THREAD_TEST_CASE(tls_shutdown_sanity_test) {
+    ::testing::socket_shutdown_sanity_test(tls_socketpair);
+}
+
+SEASTAR_THREAD_TEST_CASE(tls_shutdown_after_handshake_sanity_test) {
+    ::testing::socket_shutdown_sanity_test(tls_handshaked_socketpair);
 }

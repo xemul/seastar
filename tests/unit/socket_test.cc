@@ -39,6 +39,8 @@
 #include <optional>
 #include <tuple>
 
+#include "socket_shared.hh"
+
 using namespace seastar;
 
 future<> handle_connection(connected_socket s) {
@@ -337,3 +339,20 @@ SEASTAR_THREAD_TEST_CASE(socket_bufsize) {
     BOOST_CHECK_LT(recv_default, 20'000'000);
 }
 
+namespace {
+
+std::pair<connected_socket, connected_socket> tcp_socketpair() {
+    listen_options lo;
+    lo.reuse_address = true;
+    server_socket ss = seastar::listen(ipv4_addr("127.0.0.1", 1234), lo);
+    auto cf = connect(ipv4_addr("127.0.0.1", 1234));
+    auto ar = ss.accept().get();
+    auto cs = cf.get();
+    return std::make_pair(std::move(ar.connection), std::move(cs));
+}
+
+}
+
+SEASTAR_THREAD_TEST_CASE(tcp_shutdown_sanity_test) {
+    ::testing::socket_shutdown_sanity_test(tcp_socketpair);
+}

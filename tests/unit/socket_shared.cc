@@ -111,4 +111,43 @@ void socket_shutdown_sanity_test(std::function<std::pair<connected_socket, conne
     }
 }
 
+void socket_read_shutdown_sanity_test(std::function<std::pair<connected_socket, connected_socket>()> socketpair) {
+    {
+        fmt::print("Test shutdown_input wakeup read\n");
+        auto p = socketpair();
+        auto in = p.first.input();
+
+        auto in_f = in.read();
+        BOOST_CHECK(!in_f.available());
+        p.first.shutdown_input();
+
+        auto start = std::chrono::steady_clock::now();
+        auto b = in_f.get();
+        auto delay = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - start);
+        BOOST_CHECK_EQUAL(b.size(), 0);
+        fmt::print("Woke up in {} seconds\n", delay.count());
+        BOOST_CHECK_LT(delay.count(), 1.0);
+        b = in.read().get();
+        BOOST_CHECK_EQUAL(b.size(), 0);
+    }
+    {
+        fmt::print("Test shutdown_input with data\n");
+        auto p = socketpair();
+        auto in = p.first.input();
+        auto out = p.second.output();
+
+        out.write("hello").get();
+        out.flush().get();
+
+        auto b = in.read_exactly(1).get();
+        BOOST_CHECK_EQUAL(internal::to_sstring<sstring>(b), "h");
+        p.first.shutdown_input();
+
+        b = in.read().get();
+        BOOST_CHECK_EQUAL(internal::to_sstring<sstring>(b), "ello");
+        b = in.read().get();
+        BOOST_CHECK_EQUAL(b.size(), 0);
+    }
+}
+
 }

@@ -243,7 +243,7 @@ public:
     void shutdown_output();
     /// Disables input from the socket.
     ///
-    /// Current or future reads will immediately fail with an error.
+    /// Current or future reads will immediately resolve with an EOF.
     /// This is useful to abort operations on a socket that is not making
     /// progress due to a peer failure.
     void shutdown_input();

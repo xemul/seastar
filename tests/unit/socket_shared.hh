@@ -27,4 +27,5 @@ namespace seastar { class connected_socket; }
 
 namespace testing {
 void socket_shutdown_sanity_test(std::function<std::pair<seastar::connected_socket, seastar::connected_socket>()> socketpair);
+void socket_read_shutdown_sanity_test(std::function<std::pair<seastar::connected_socket, seastar::connected_socket>()> socketpair);
 }

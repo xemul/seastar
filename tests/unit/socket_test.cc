@@ -356,3 +356,7 @@ std::pair<connected_socket, connected_socket> tcp_socketpair() {
 SEASTAR_THREAD_TEST_CASE(tcp_shutdown_sanity_test) {
     ::testing::socket_shutdown_sanity_test(tcp_socketpair);
 }
+
+SEASTAR_THREAD_TEST_CASE(tcp_read_shutdown_sanity_test) {
+    ::testing::socket_read_shutdown_sanity_test(tcp_socketpair);
+}

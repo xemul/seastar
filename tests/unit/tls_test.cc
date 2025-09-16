@@ -2142,3 +2142,7 @@ SEASTAR_THREAD_TEST_CASE(tls_read_shutdown_sanity_test) {
 SEASTAR_THREAD_TEST_CASE(tls_read_shutdown_after_handshake_sanity_test) {
     ::testing::socket_read_shutdown_sanity_test(tls_handshaked_socketpair);
 }
+
+SEASTAR_THREAD_TEST_CASE(tls_close_with_unread_buffers_test) {
+    ::testing::socket_close_with_unread_buffers_test(tls_socketpair);
+}

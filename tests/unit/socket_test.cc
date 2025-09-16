@@ -360,3 +360,7 @@ SEASTAR_THREAD_TEST_CASE(tcp_shutdown_sanity_test) {
 SEASTAR_THREAD_TEST_CASE(tcp_read_shutdown_sanity_test) {
     ::testing::socket_read_shutdown_sanity_test(tcp_socketpair);
 }
+
+SEASTAR_THREAD_TEST_CASE(tcp_close_with_unread_buffers_test) {
+    ::testing::socket_close_with_unread_buffers_test(tcp_socketpair);
+}

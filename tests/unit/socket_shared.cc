@@ -25,6 +25,9 @@
 #include <seastar/testing/test_case.hh>
 #include <seastar/net/api.hh>
 #include <seastar/core/sstring.hh>
+#include <seastar/core/when_all.hh>
+#include <seastar/core/thread.hh>
+#include <seastar/core/sleep.hh>
 #include <seastar/util/closeable.hh>
 #include "socket_shared.hh"
 
@@ -148,6 +151,40 @@ void socket_read_shutdown_sanity_test(std::function<std::pair<connected_socket, 
         b = in.read().get();
         BOOST_CHECK_EQUAL(b.size(), 0);
     }
+}
+
+void socket_close_with_unread_buffers_test(std::function<std::pair<connected_socket, connected_socket>()> socketpair) {
+    auto p = socketpair();
+    auto c = seastar::async([c = std::move(p.first)] mutable {
+        auto in = c.input();
+        auto b = in.read_exactly(1).get();
+        in.close().get();
+        c.shutdown_output();
+    });
+
+    auto s = seastar::async([s = std::move(p.second)] mutable {
+        auto out = s.output();
+        size_t bytes_sent = 0;
+        auto buf = temporary_buffer<char>(1024);
+        std::memset(buf.get_write(), '\0', buf.size());
+        auto start = std::chrono::steady_clock::now();
+        while (true) {
+            try {
+                out.write(buf.get(), buf.size()).get();
+                out.flush().get();
+                bytes_sent += buf.size();
+            } catch (...) {
+                break;
+            }
+        }
+        auto delay = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - start);
+        fmt::print("Wrote {} MiBs in {:.3f} seconds\n", bytes_sent >> 20, delay.count());
+        out.close().handle_exception([] (auto x) {}).get();
+        s.shutdown_input();
+        BOOST_CHECK_LT(delay.count(), 1.0);
+    });
+
+    seastar::when_all(std::move(c), std::move(s)).discard_result().get();
 }
 
 }

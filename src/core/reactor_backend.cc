@@ -83,13 +83,13 @@ void prepare_iocb(const io_request& req, io_completion* desc, iocb& iocb) {
     case io_request::operation::write: {
         const auto& op = req.as<io_request::operation::write>();
         iocb = make_write_iocb(op.fd, op.pos, op.addr, op.size);
-        set_nowait(iocb, op.nowait_works);
+        set_nowait(iocb, false);
         break;
     }
     case io_request::operation::writev: {
         const auto& op = req.as<io_request::operation::writev>();
         iocb = make_writev_iocb(op.fd, op.pos, op.iovec, op.iov_len);
-        set_nowait(iocb, op.nowait_works);
+        set_nowait(iocb, false);
         break;
     }
     case io_request::operation::read: {

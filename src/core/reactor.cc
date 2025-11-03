@@ -1760,6 +1760,21 @@ size_t sanitize_iovecs(std::vector<iovec>& iov, size_t disk_alignment) noexcept 
     return length;
 }
 
+void iovec_trim_front(std::vector<iovec>& iov, size_t size) {
+    auto it = iov.begin();
+    while (it != iov.end() && size > 0) {
+        if (it->iov_len > size) {
+            it->iov_base = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(it->iov_base) + size);
+            it->iov_len -= size;
+            break;
+        }
+
+        size -= it->iov_len;
+        it++;
+    }
+    iov.erase(iov.begin(), it);
+}
+
 }
 
 future<file>

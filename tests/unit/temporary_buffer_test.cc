@@ -22,11 +22,13 @@
 
 #define BOOST_TEST_MODULE core
 
+#include <sys/uio.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <boost/test/unit_test.hpp>
 #include <seastar/core/sstring.hh>
 #include <seastar/core/temporary_buffer.hh>
+#include <seastar/util/internal/iovec_utils.hh>
 
 using namespace seastar;
 
@@ -106,4 +108,31 @@ static void do_test_detach_buffers(std::vector<size_t> sizes) {
 
 BOOST_AUTO_TEST_CASE(test_detach_buffers) {
     do_test_detach_buffers({0});
+}
+
+BOOST_AUTO_TEST_CASE(test_iovec_trim_front) {
+    const char* data = "abcdefghijklmno";
+    std::vector<iovec> iovs;
+    auto populate = [&] {
+        iovs.clear();
+        iovs.push_back(iovec{ (void*)(data + 0), 5 });
+        iovs.push_back(iovec{ (void*)(data + 5), 3 });
+        iovs.push_back(iovec{ (void*)(data + 8), 7 });
+    };
+
+    for (size_t l = 0; l < 17; l++) {
+        populate();
+        internal::iovec_trim_front(iovs, l);
+        if (l >= 15) {
+            BOOST_REQUIRE(iovs.empty());
+        } else {
+            BOOST_REQUIRE(iovs.size() > 0);
+            BOOST_REQUIRE_EQUAL(*reinterpret_cast<char*>(iovs[0].iov_base), data[l]);
+            BOOST_REQUIRE_NE(iovs[0].iov_len, 0);
+            BOOST_REQUIRE_EQUAL(internal::iovec_len(iovs), 15 - l);
+            if (iovs.size() > 1) {
+                BOOST_REQUIRE_EQUAL(*reinterpret_cast<char*>(iovs[1].iov_base), data[l + iovs[0].iov_len]);
+            }
+        }
+    }
 }

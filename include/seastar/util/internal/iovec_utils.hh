@@ -47,6 +47,10 @@ inline size_t iovec_len(const std::vector<iovec>& iov)
     return ret;
 }
 
+// Skips first \size bytes from the data \iov points to
+// Updates the iov in-place
+void iovec_trim_front(std::vector<iovec>& iov, size_t size);
+
 // Given a properly aligned vector of iovecs, ensures that it respects the
 // IOV_MAX limit, by trimming if necessary. The modified vector still satisfied
 // the alignment requirements.

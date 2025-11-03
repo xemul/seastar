@@ -1695,14 +1695,6 @@ public:
 
     virtual future<size_t> sendmsg(pollable_fd_state& fd, std::span<iovec> iovs, size_t iovlen) final {
         if (fd.take_speculation(EPOLLOUT)) {
-            static_assert(offsetof(iovec, iov_base) == offsetof(net::fragment, base) &&
-                sizeof(iovec::iov_base) == sizeof(net::fragment::base) &&
-                offsetof(iovec, iov_len) == offsetof(net::fragment, size) &&
-                sizeof(iovec::iov_len) == sizeof(net::fragment::size) &&
-                alignof(iovec) == alignof(net::fragment) &&
-                sizeof(iovec) == sizeof(net::fragment)
-                , "net::fragment and iovec should be equivalent");
-
             ::msghdr mh = {};
             mh.msg_iov = iovs.data();
             mh.msg_iovlen = std::min<size_t>(iovs.size(), IOV_MAX);

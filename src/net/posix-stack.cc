@@ -289,7 +289,11 @@ public:
         return _ops->local_address(_fd.get_file_desc());
     }
     socket_address remote_address() const noexcept override {
-        return _ops->remote_address(_fd.get_file_desc());
+        try {
+            return _ops->remote_address(_fd.get_file_desc());
+        } catch (...) {
+            return socket_address();
+        }
     }
     future<> wait_input_shutdown() override {
         return _fd.poll_rdhup();

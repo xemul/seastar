@@ -60,6 +60,11 @@ jobs:
         run: |
           sudo apt-get -y install clang-tools
 
+      - name: Install g++
+        if: ${{ inputs.compiler == 'g++' }}
+        run: |
+          sudo apt-get -y install gcc-14 g++-14
+
       - name: Install ccache
         if: ${{ inputs.enable-ccache }}
         run: |
@@ -75,15 +80,17 @@ jobs:
         run: |
           if [ ${{ inputs.compiler }} = "clang++" ]; then
             CC=clang
+            CPP=clang++
           else
-            CC=gcc
+            CC=gcc-14
+            CPP=g++-14
           fi
           if ${{ inputs.enable-ccache }}; then
             MAYBE_CCACHE_OPT="--ccache"
           fi
           ./configure.py                          \
             --c++-standard ${{ inputs.standard }} \
-            --compiler ${{ inputs.compiler }}     \
+            --compiler $CPP                       \
             --c-compiler $CC                      \
             --mode ${{ inputs.mode }}             \
             $MAYBE_CCACHE_OPT                     \

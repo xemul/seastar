@@ -34,7 +34,7 @@
 using namespace seastar;
 using namespace seastar::net;
 
-static const sstring seastar_name = "seastar.io";
+static const sstring seastar_name = "seastar.io"; //
 
 static future<> test_resolve(dns_resolver::options opts) {
     auto d = ::make_lw_shared<dns_resolver>(std::move(opts));

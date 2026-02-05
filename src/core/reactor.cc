@@ -1677,6 +1677,10 @@ reactor::make_pollable_fd(socket_address sa, int proto) {
     return pollable_fd(std::move(fd));
 }
 
+bool reactor::have_aio_fdatasync() const {
+    return _cfg.have_aio_fsync && _backend->have_aio_fdatasync();
+}
+
 namespace internal {
 
 future<> posix_connect(pollable_fd pfd, socket_address sa, socket_address local) {

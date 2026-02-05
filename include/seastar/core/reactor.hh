@@ -525,6 +525,7 @@ public:
     // FIXME: reuseport currently leads to heavy load imbalance.
     // Until we fix that, just disable it unconditionally.
     bool posix_reuseport_available() const { return false; }
+    bool have_aio_fdatasync() const;
 
     pollable_fd make_pollable_fd(socket_address sa, int proto);
 

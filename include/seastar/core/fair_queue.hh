@@ -175,6 +175,10 @@ private:
         bool _queued = false;
         uint32_t _activations = 0;
         priority_class_group_data* _parent = nullptr;
+        bool _plugged = true;
+
+        void unplug() noexcept;
+
         priority_entry(uint32_t shares, priority_class_group_data* p) noexcept
                 : _shares(std::max(shares, 1u))
                 , _parent(p)
@@ -213,6 +217,9 @@ private:
         priority_queue _children;
         capacity_t _last_accumulated = 0;
         size_t _nr_children = 0;
+
+        bool plug() noexcept;
+
     public:
         priority_class_group_data(uint32_t shares, priority_class_group_data* p) noexcept
                 : priority_entry(shares, p)
@@ -247,6 +254,8 @@ private:
 
     void plug_priority_class(priority_class_data& pc) noexcept;
     void unplug_priority_class(priority_class_data& pc) noexcept;
+    void plug_priority_group(priority_class_group_data& pg) noexcept;
+    void unplug_priority_group(priority_class_group_data& pg) noexcept;
 
 public:
     /// Constructs a fair queue with configuration parameters \c cfg.
@@ -287,8 +296,8 @@ public:
     /// request finishes executing - regardless of success or failure.
     void queue(class_id c, fair_queue_entry& ent) noexcept;
 
-    void plug_class(class_id c) noexcept;
-    void unplug_class(class_id c) noexcept;
+    void plug_class(class_id c, bool group) noexcept;
+    void unplug_class(class_id c, bool group) noexcept;
 
     /// Notifies that ont request finished
     /// \param desc an instance of \c fair_queue_ticket structure describing the request that just finished.

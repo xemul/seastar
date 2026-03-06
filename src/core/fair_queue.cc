@@ -95,7 +95,8 @@ class fair_queue::priority_class_data final : public priority_entry {
     friend class fair_queue;
     capacity_t _pure_accumulated = 0;
     fair_queue_entry::container_list_t _queue;
-    bool _plugged = true;
+
+    bool plug() noexcept;
 
 public:
     explicit priority_class_data(uint32_t shares, priority_class_group_data* p) noexcept : priority_entry(shares, p) {}
@@ -156,25 +157,43 @@ void fair_queue::priority_class_group_data::push_from_idle(priority_entry& pc, c
     wakeup(cfg);
 }
 
-void fair_queue::plug_priority_class(priority_class_data& pc) noexcept {
-    SEASTAR_ASSERT(!pc._plugged);
-    pc._plugged = true;
-    if (!pc._queue.empty()) {
-        pc.wakeup(_config);
+bool fair_queue::priority_class_data::plug() noexcept {
+    SEASTAR_ASSERT(!_plugged);
+    _plugged = true;
+    return !_queue.empty();
+}
+
+bool fair_queue::priority_class_group_data::plug() noexcept {
+    SEASTAR_ASSERT(!_plugged);
+    _plugged = true;
+    return !_children.empty();
+}
+
+void fair_queue::plug_class(class_id cid, bool group) noexcept {
+    auto& pc = *_priority_classes[cid];
+    if (group) {
+        if (pc._parent->plug()) {
+            pc._parent->wakeup(_config);
+        }
+    } else {
+        if (pc.plug()) {
+            pc.wakeup(_config);
+        }
     }
 }
 
-void fair_queue::plug_class(class_id cid) noexcept {
-    plug_priority_class(*_priority_classes[cid]);
+void fair_queue::priority_entry::unplug() noexcept {
+    SEASTAR_ASSERT(_plugged);
+    _plugged = false;
 }
 
-void fair_queue::unplug_priority_class(priority_class_data& pc) noexcept {
-    SEASTAR_ASSERT(pc._plugged);
-    pc._plugged = false;
-}
-
-void fair_queue::unplug_class(class_id cid) noexcept {
-    unplug_priority_class(*_priority_classes[cid]);
+void fair_queue::unplug_class(class_id cid, bool group) noexcept {
+    auto& pc = *_priority_classes[cid];
+    if (group) {
+        pc._parent->unplug();
+    } else {
+        pc.unplug();
+    }
 }
 
 fair_queue::capacity_t fair_queue::accumulated(class_id cid) const noexcept {
@@ -256,6 +275,10 @@ fair_queue_entry* fair_queue::top() {
 }
 
 fair_queue_entry* fair_queue::priority_class_group_data::top() {
+    if (!_plugged) {
+        return nullptr;
+    }
+
     while (!_children.empty()) {
         priority_entry& h = *_children.top();
         auto* ent = h.top();

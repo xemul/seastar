@@ -758,7 +758,7 @@ SEASTAR_THREAD_TEST_CASE(test_gauge_integrator_test) {
 
 static future<size_t> run_and_check_bandwidth(io_queue_for_tests& tio, internal::priority_class pc, size_t bandwidth_goal, unsigned parallelizm = 1, size_t req_size = 128*1024) {
     fmt::print("Run {} workload\n", pc.id());
-#if 0
+#if 1
     bool keep_going = true;
     uint64_t nr_requests = 0;
 
@@ -985,12 +985,15 @@ SEASTAR_THREAD_TEST_CASE(test_2_class_group_bandwidth_throttler_fair_shares) {
 
     background_drain drain(tio);
 
-    auto f0 = run_and_check_bandwidth(tio, pc0, std::numeric_limits<size_t>::max(), 12);
-    auto f1 = run_and_check_bandwidth(tio, pc1, std::numeric_limits<size_t>::max(), 12);
+    auto f0 = run_and_check_bandwidth(tio, pc0, bandwidth * 0.8 * 0.95, 4);
+    auto f1 = run_and_check_bandwidth(tio, pc1, bandwidth * 0.2 * 0.95, 4);
     auto bw0 = f0.get();
     auto bw1 = f1.get();
 
-    fmt::print("a = {} MB/s b = {} MB/s\n", bw0 >> 20, bw1 >> 20);
+    // Check that shares are roughly respected
+    BOOST_REQUIRE_LE(bw0 / bw1, 4.05);
+    BOOST_REQUIRE_GE(bw0 / bw1, 3.95);
+    BOOST_REQUIRE_LE(bw0 + bw1, bandwidth * 1.15);
 
     drain.stop().get();
     destroy_scheduling_group(sg1).get();

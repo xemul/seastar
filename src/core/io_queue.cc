@@ -150,6 +150,7 @@ class io_queue::priority_class_data {
 
     class bandwidth_throttler {
         io_group::priority_class_data::token_bucket_t& _tb;
+        const bool _group;
         uint64_t _replenish_head;
         priority_class_data& _pc;
         timer<lowres_clock> _replenish;
@@ -160,13 +161,14 @@ class io_queue::priority_class_data {
             if (delta > 0) {
                 _replenish.arm(std::chrono::duration_cast<std::chrono::microseconds>(_tb.duration_for(delta)));
             } else {
-                _pc.unthrottle();
+                _pc.unthrottle(_group);
             }
         }
 
     public:
-        bandwidth_throttler(io_group::priority_class_data& pg, priority_class_data& pc) noexcept
+        bandwidth_throttler(io_group::priority_class_data& pg, priority_class_data& pc, bool g) noexcept
                 : _tb(pg.tb)
+                , _group(g)
                 , _pc(pc)
                 , _replenish([this] { try_to_replenish(); })
         {}
@@ -175,7 +177,7 @@ class io_queue::priority_class_data {
             auto ph = _tb.grab(tokens);
             auto delta = _tb.deficiency(ph);
             if (delta > 0) {
-                _pc.throttle();
+                _pc.throttle(_group);
                 _replenish_head = ph;
                 _replenish.arm(std::chrono::duration_cast<std::chrono::microseconds>(_tb.duration_for(delta)));
             }
@@ -183,18 +185,13 @@ class io_queue::priority_class_data {
     };
 
     boost::container::static_vector<bandwidth_throttler, 2> _bw;
-    unsigned _throttled;
 
-    void throttle() noexcept {
-        if (_throttled++ == 0) {
-            _queue.throttle_priority_class(*this);
-        }
+    void throttle(bool group) noexcept {
+        _queue.throttle_priority_class(*this, group);
     }
 
-    void unthrottle() noexcept {
-        if (--_throttled == 0) {
-            _queue.unthrottle_priority_class(*this);
-        }
+    void unthrottle(bool group) noexcept {
+        _queue.unthrottle_priority_class(*this, group);
     }
 
 public:
@@ -212,11 +209,10 @@ public:
         , _total_queue_time(0)
         , _total_execution_time(0)
         , _starvation_time(0)
-        , _throttled(0)
     {
-        _bw.emplace_back(pg, *this);
+        _bw.emplace_back(pg, *this, false);
         if (pg.parent != nullptr) {
-            _bw.emplace_back(*pg.parent, *this);
+            _bw.emplace_back(*pg.parent, *this, true);
         }
     }
     priority_class_data(const priority_class_data&) = delete;
@@ -1252,15 +1248,15 @@ void io_queue::destroy_priority_class(internal::priority_class pc) noexcept {
     }
 }
 
-void io_queue::throttle_priority_class(const priority_class_data& pc) noexcept {
+void io_queue::throttle_priority_class(const priority_class_data& pc, bool group) noexcept {
     for (auto&& s : _streams) {
-        s.fq.unplug_class(pc.fq_class());
+        s.fq.unplug_class(pc.fq_class(), group);
     }
 }
 
-void io_queue::unthrottle_priority_class(const priority_class_data& pc) noexcept {
+void io_queue::unthrottle_priority_class(const priority_class_data& pc, bool group) noexcept {
     for (auto&& s : _streams) {
-        s.fq.plug_class(pc.fq_class());
+        s.fq.plug_class(pc.fq_class(), group);
     }
 }
 

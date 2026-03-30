@@ -1860,6 +1860,14 @@ reactor::open_file_dma(std::string_view nameref, open_flags flags, file_open_opt
             }
             return buf.f_type == internal::fs_magic::tmpfs;
         };
+        auto is_chardev = [] (int fd) {
+            struct ::stat buf;
+            auto r = ::fstat(fd, &buf);
+            if (r == -1) {
+                return false;
+            }
+            return S_ISCHR(buf.st_mode);
+        };
         open_flags |= O_CLOEXEC;
         if (bypass_fsync) {
             options.durable = false;
@@ -1878,7 +1886,7 @@ reactor::open_file_dma(std::string_view nameref, open_flags flags, file_open_opt
         int r = ::fcntl(fd, F_SETFL, open_flags | o_direct_flag);
         if (r == -1  && strict_o_direct) {
             auto maybe_ret = wrap_syscall(r, st);  // capture errno (should be EINVAL)
-            if (!is_tmpfs(fd)) {
+            if (!is_tmpfs(fd) && !is_chardev(fd)) {
                 return maybe_ret;
             }
         }

@@ -718,6 +718,7 @@ private:
     friend class pollable_fd_state;
     friend class posix_file_impl;
     friend class blockdev_file_impl;
+    friend class chardev_file_impl;
     friend class timer<>;
     friend class timer<lowres_clock>;
     friend class timer<manual_clock>;

@@ -61,6 +61,7 @@
 #undef min
 
 #include <seastar/core/align.hh>
+#include <seastar/core/format.hh>
 #include <seastar/core/internal/uname.hh>
 #include <seastar/core/internal/io_intent.hh>
 #include <seastar/core/reactor.hh>
@@ -746,6 +747,206 @@ blockdev_file_impl::dup() {
     return posix_file_impl::do_dup<blockdev_file_impl>();
 }
 
+chardev_file_impl::chardev_file_impl(int fd, open_flags f)
+        : _fd(fd) {
+    // Character devices have no alignment requirements.
+    _memory_dma_alignment = 1;
+    _disk_read_dma_alignment = 1;
+    _disk_write_dma_alignment = 1;
+    _disk_overwrite_dma_alignment = 1;
+    (void)f;
+}
+
+chardev_file_impl::~chardev_file_impl() {
+    if (_fd != -1) {
+        ::close(_fd);
+    }
+}
+
+future<size_t>
+chardev_file_impl::read_dma(uint64_t pos, void* buffer, size_t len, io_intent*) noexcept {
+    if (pos != _pos) {
+        throw std::invalid_argument(
+                format("chardev read at wrong position: expected {:d}, got {:d}", _pos, pos));
+    }
+    auto sr = co_await engine()._thread_pool->submit<syscall_result<ssize_t>>(
+            internal::thread_pool_submit_reason::chardev_io, [fd = _fd, buffer, len] {
+        return wrap_syscall<ssize_t>(::read(fd, buffer, len));
+    });
+    sr.throw_if_error();
+    auto n = static_cast<size_t>(sr.result);
+    _pos += n;
+    co_return n;
+}
+
+future<size_t>
+chardev_file_impl::read_dma(uint64_t pos, std::vector<iovec> iov, io_intent*) noexcept {
+    if (pos != _pos) {
+        throw std::invalid_argument(
+                format("chardev read at wrong position: expected {:d}, got {:d}", _pos, pos));
+    }
+    auto sr = co_await engine()._thread_pool->submit<syscall_result<ssize_t>>(
+            internal::thread_pool_submit_reason::chardev_io, [fd = _fd, iov = std::move(iov)] {
+        return wrap_syscall<ssize_t>(::readv(fd, iov.data(), iov.size()));
+    });
+    sr.throw_if_error();
+    auto n = static_cast<size_t>(sr.result);
+    _pos += n;
+    co_return n;
+}
+
+future<size_t>
+chardev_file_impl::write_dma(uint64_t pos, const void* buffer, size_t len, io_intent*) noexcept {
+    if (pos != _pos) {
+        throw std::invalid_argument(
+                format("chardev write at wrong position: expected {:d}, got {:d}", _pos, pos));
+    }
+    auto sr = co_await engine()._thread_pool->submit<syscall_result<ssize_t>>(
+            internal::thread_pool_submit_reason::chardev_io, [fd = _fd, buffer, len] {
+        return wrap_syscall<ssize_t>(::write(fd, buffer, len));
+    });
+    sr.throw_if_error();
+    auto n = static_cast<size_t>(sr.result);
+    _pos += n;
+    co_return n;
+}
+
+future<size_t>
+chardev_file_impl::write_dma(uint64_t pos, std::vector<iovec> iov, io_intent*) noexcept {
+    if (pos != _pos) {
+        throw std::invalid_argument(
+                format("chardev write at wrong position: expected {:d}, got {:d}", _pos, pos));
+    }
+    auto sr = co_await engine()._thread_pool->submit<syscall_result<ssize_t>>(
+            internal::thread_pool_submit_reason::chardev_io, [fd = _fd, iov = std::move(iov)] {
+        return wrap_syscall<ssize_t>(::writev(fd, iov.data(), iov.size()));
+    });
+    sr.throw_if_error();
+    auto n = static_cast<size_t>(sr.result);
+    _pos += n;
+    co_return n;
+}
+
+future<temporary_buffer<uint8_t>>
+chardev_file_impl::dma_read_bulk(uint64_t pos, size_t range_size, io_intent*) noexcept {
+    if (pos != _pos) {
+        throw std::invalid_argument(
+                format("chardev read at wrong position: expected {:d}, got {:d}", _pos, pos));
+    }
+    temporary_buffer<uint8_t> buf(range_size);
+    auto* ptr = buf.get_write();
+    auto len = buf.size();
+    auto sr = co_await engine()._thread_pool->submit<syscall_result<ssize_t>>(
+            internal::thread_pool_submit_reason::chardev_io, [fd = _fd, ptr, len] {
+        return wrap_syscall<ssize_t>(::read(fd, ptr, len));
+    });
+    sr.throw_if_error();
+    auto n = static_cast<size_t>(sr.result);
+    _pos += n;
+    buf.trim(n);
+    co_return std::move(buf);
+}
+
+future<>
+chardev_file_impl::flush() noexcept {
+    // Character devices do not have a write-back cache to flush.
+    return make_ready_future<>();
+}
+
+future<struct stat>
+chardev_file_impl::stat() noexcept {
+    auto ret = co_await engine()._thread_pool->submit<syscall_result_extra<struct stat>>(
+            internal::thread_pool_submit_reason::file_operation, [fd = _fd] {
+        struct stat st;
+        auto ret = ::fstat(fd, &st);
+        return wrap_syscall(ret, st);
+    });
+    ret.throw_if_error();
+    co_return ret.extra;
+}
+
+future<>
+chardev_file_impl::truncate(uint64_t) noexcept {
+    return make_exception_future<>(std::runtime_error("truncate is not supported on character devices"));
+}
+
+future<>
+chardev_file_impl::discard(uint64_t, uint64_t) noexcept {
+    return make_exception_future<>(std::runtime_error("discard is not supported on character devices"));
+}
+
+future<>
+chardev_file_impl::allocate(uint64_t, uint64_t) noexcept {
+    return make_exception_future<>(std::runtime_error("allocate is not supported on character devices"));
+}
+
+future<uint64_t>
+chardev_file_impl::size() noexcept {
+    return make_exception_future<uint64_t>(std::runtime_error("size is not supported on character devices"));
+}
+
+future<>
+chardev_file_impl::close() noexcept {
+    if (_fd == -1) {
+        seastar_logger.warn("double close() detected on character device, contact support");
+        return make_ready_future<>();
+    }
+    auto fd = _fd;
+    _fd = -1;
+    auto sr = wrap_syscall<int>(::close(fd));
+    try {
+        sr.throw_if_error();
+    } catch (...) {
+        report_exception("close() on character device failed", std::current_exception());
+    }
+    return make_ready_future<>();
+}
+
+future<int>
+chardev_file_impl::ioctl(uint64_t cmd, void* argp) noexcept {
+    auto sr = co_await engine()._thread_pool->submit<syscall_result<int>>(
+            internal::thread_pool_submit_reason::file_operation, [fd = _fd, cmd, argp] () mutable {
+        return wrap_syscall<int>(::ioctl(fd, cmd, argp));
+    });
+    sr.throw_if_error();
+    co_return sr.result;
+}
+
+future<int>
+chardev_file_impl::ioctl_short(uint64_t cmd, void* argp) noexcept {
+    int ret = ::ioctl(_fd, cmd, argp);
+    if (ret == -1) {
+        return make_exception_future<int>(
+                std::system_error(errno, std::system_category(), "ioctl failed"));
+    }
+    return make_ready_future<int>(ret);
+}
+
+future<int>
+chardev_file_impl::fcntl(int op, uintptr_t arg) noexcept {
+    auto sr = co_await engine()._thread_pool->submit<syscall_result<int>>(
+            internal::thread_pool_submit_reason::file_operation, [fd = _fd, op, arg] () mutable {
+        return wrap_syscall<int>(::fcntl(fd, op, arg));
+    });
+    sr.throw_if_error();
+    co_return sr.result;
+}
+
+future<int>
+chardev_file_impl::fcntl_short(int op, uintptr_t arg) noexcept {
+    int ret = ::fcntl(_fd, op, arg);
+    if (ret == -1) {
+        return make_exception_future<int>(
+                std::system_error(errno, std::system_category(), "fcntl failed"));
+    }
+    return make_ready_future<int>(ret);
+}
+
+subscription<directory_entry>
+chardev_file_impl::list_directory(std::function<future<> (directory_entry de)>) {
+    throw std::runtime_error("list_directory is not supported on character devices");
+}
+
 append_challenged_posix_file_impl::append_challenged_posix_file_impl(int fd, open_flags f, file_open_options options, const internal::fs_info& fsi, dev_t device_id)
         : posix_file_impl(fd, f, options, device_id, fsi)
         , _max_size_changing_ops(fsi.append_concurrency)
@@ -1261,6 +1462,10 @@ make_file_impl(int fd, file_open_options options, int flags, struct stat st) noe
         fsi.block_size = 4096;
         fsi.nowait_works = false;
         return make_ready_future<shared_ptr<file_impl>>(make_shared<posix_file_real_impl>(fd, open_flags(flags), options, fsi, st.st_dev));
+    }
+
+    if (S_ISCHR(st.st_mode)) {
+        return make_ready_future<shared_ptr<file_impl>>(make_shared<chardev_file_impl>(fd, open_flags(flags)));
     }
 
     auto st_dev = st.st_dev;

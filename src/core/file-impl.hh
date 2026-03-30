@@ -307,4 +307,35 @@ public:
     virtual std::unique_ptr<seastar::file_handle_impl> dup() override;
 };
 
+// Implementation for character devices. All I/O is dispatched via the thread
+// pool using pread/pwrite/preadv/pwritev. All alignment requirements are 1 (no
+// restrictions). Operations that do not apply to character devices resolve with
+// an exceptional future. dup() is not supported.
+class chardev_file_impl final : public file_impl {
+    int _fd;
+    uint64_t _pos = 0;  // Tracks expected sequential position; char devices do not support seeking.
+public:
+    chardev_file_impl(int fd, open_flags f);
+    ~chardev_file_impl() override;
+
+    future<size_t> read_dma(uint64_t pos, void* buffer, size_t len, io_intent* intent) noexcept override;
+    future<size_t> read_dma(uint64_t pos, std::vector<iovec> iov, io_intent* intent) noexcept override;
+    future<size_t> write_dma(uint64_t pos, const void* buffer, size_t len, io_intent* intent) noexcept override;
+    future<size_t> write_dma(uint64_t pos, std::vector<iovec> iov, io_intent* intent) noexcept override;
+    future<temporary_buffer<uint8_t>> dma_read_bulk(uint64_t offset, size_t range_size, io_intent* intent) noexcept override;
+
+    future<> flush() noexcept override;
+    future<struct stat> stat() noexcept override;
+    future<> truncate(uint64_t length) noexcept override;
+    future<> discard(uint64_t offset, uint64_t length) noexcept override;
+    future<> allocate(uint64_t position, uint64_t length) noexcept override;
+    future<uint64_t> size() noexcept override;
+    future<> close() noexcept override;
+    future<int> ioctl(uint64_t cmd, void* argp) noexcept override;
+    future<int> ioctl_short(uint64_t cmd, void* argp) noexcept override;
+    future<int> fcntl(int op, uintptr_t arg) noexcept override;
+    future<int> fcntl_short(int op, uintptr_t arg) noexcept override;
+    subscription<directory_entry> list_directory(std::function<future<> (directory_entry de)> next) override;
+};
+
 }

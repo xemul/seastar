@@ -36,10 +36,12 @@ enum class thread_pool_submit_reason : size_t {
     file_operation,
     // Used for process operations that don't have non-blocking alternatives.
     process_operation,
+    // Used for character device I/O, which bypasses the io_queue.
+    chardev_io,
 };
 
 class submit_metrics {
-    uint64_t _counters[static_cast<size_t>(thread_pool_submit_reason::process_operation) + 1]{};
+    uint64_t _counters[static_cast<size_t>(thread_pool_submit_reason::chardev_io) + 1]{};
 
 public:
     void record_reason(thread_pool_submit_reason reason) {

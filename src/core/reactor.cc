@@ -2591,6 +2591,8 @@ void reactor::register_metrics() {
             io_fallback_counter("file_operation", internal::thread_pool_submit_reason::file_operation),
             // total_operations value:DERIVE:0:U
             io_fallback_counter("process_operation", internal::thread_pool_submit_reason::process_operation),
+            // total_operations value:DERIVE:0:U
+            io_fallback_counter("chardev_io", internal::thread_pool_submit_reason::chardev_io),
     });
 
     _metric_groups.add_group("memory", {

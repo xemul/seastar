@@ -163,11 +163,14 @@ public:
         fetch_add(_rovers.head, tokens);
     }
 
-    void replenish(typename Clock::time_point now) noexcept {
+    // Replenishes tokens based on elapsed time. Returns any tokens that could
+    // not be absorbed (because the bucket is already full), so the caller can
+    // redirect them elsewhere (e.g. a secondary bucket).
+    T replenish(typename Clock::time_point now) noexcept {
         auto ts = _replenished.load(std::memory_order_relaxed);
 
         if (now <= ts) {
-            return;
+            return 0;
         }
 
         auto delta = now - ts;
@@ -175,11 +178,23 @@ public:
 
         if (extra >= _replenish_threshold) {
             if (!_replenished.compare_exchange_weak(ts, ts + delta)) {
-                return; // next time or another shard
+                return 0; // next time or another shard
             }
 
-            fetch_add(_rovers.head, std::min(extra, _rovers.max_extra(_replenish_limit)));
+            auto used = add_tokens(extra, _replenish_limit);
+            return extra - used;
         }
+        return 0;
+    }
+
+    // Advance the head by up to `tokens`, capped at max_extra(limit).
+    // Returns how many tokens were actually added.
+    T add_tokens(T tokens, T limit) noexcept {
+        auto capped = std::min(tokens, _rovers.max_extra(limit));
+        if (capped > 0) {
+            fetch_add(_rovers.head, capped);
+        }
+        return capped;
     }
 
     T deficiency(T from) const noexcept {

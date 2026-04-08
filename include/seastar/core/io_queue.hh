@@ -332,7 +332,7 @@ private:
      * into more tokens in the bucket.
      */
 
-    token_bucket_t _token_bucket;
+    std::array<token_bucket_t, 2> _token_bucket;
     const capacity_t _per_tick_threshold;
 
 public:
@@ -348,7 +348,7 @@ public:
     }
 
     auto capacity_duration(capacity_t cap) const noexcept {
-        return _token_bucket.duration_for(cap);
+        return _token_bucket[0].duration_for(cap);
     }
 
     struct config {
@@ -368,22 +368,27 @@ public:
     explicit io_throttler(config cfg, unsigned nr_queues);
     io_throttler(io_throttler&&) = delete;
 
-    capacity_t maximum_capacity() const noexcept { return _token_bucket.limit(); }
+private:
+    static std::array<token_bucket_t, 2> make_buckets(config cfg);
+
+public:
+    capacity_t maximum_capacity() const noexcept { return _token_bucket[0].limit(); }
     capacity_t per_tick_grab_threshold() const noexcept { return _per_tick_threshold; }
+    // bucket 0 is the priority bucket; bucket 1 is the normal bucket (default)
     capacity_t grab_capacity(capacity_t cap, unsigned bucket) noexcept;
-    clock_type::time_point replenished_ts() const noexcept { return _token_bucket.replenished_ts(); }
+    clock_type::time_point replenished_ts() const noexcept { return _token_bucket[0].replenished_ts(); }
     void refund_tokens(capacity_t, unsigned bucket) noexcept;
     void replenish_capacity(clock_type::time_point now) noexcept;
     void maybe_replenish_capacity(clock_type::time_point& local_ts) noexcept;
 
-    capacity_t capacity_deficiency(capacity_t from, unsigned bucket) const noexcept;
+    capacity_t capacity_deficiency(capacity_t from, unsigned bucket = 1) const noexcept;
 
     std::chrono::duration<double> rate_limit_duration() const noexcept {
-        std::chrono::duration<double, rate_resolution> dur((double)_token_bucket.limit() / _token_bucket.rate());
+        std::chrono::duration<double, rate_resolution> dur((double)_token_bucket[0].limit() / _token_bucket[0].rate());
         return std::chrono::duration_cast<std::chrono::duration<double>>(dur);
     }
 
-    const token_bucket_t& token_bucket() const noexcept { return _token_bucket; }
+    const token_bucket_t& token_bucket(unsigned bucket = 0) const noexcept { return _token_bucket[bucket]; }
 };
 
 class io_group {

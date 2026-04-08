@@ -1292,19 +1292,19 @@ void io_queue::unthrottle_priority_class_group(unsigned group) noexcept {
 auto io_queue::stream::reap_pending_capacity(unsigned bucket) noexcept -> reap_result {
     (void)bucket;
     auto result = reap_result{.ready_tokens = 0, .our_turn_has_come = true};
-    if (_pending.cap) {
-        capacity_t deficiency = out.capacity_deficiency(_pending.head, bucket);
-        result.our_turn_has_come = deficiency <= _pending.cap;
+    if (_pending[bucket].cap) {
+        capacity_t deficiency = out.capacity_deficiency(_pending[bucket].head, bucket);
+        result.our_turn_has_come = deficiency <= _pending[bucket].cap;
         if (result.our_turn_has_come) {
-            result.ready_tokens = _pending.cap - deficiency;
-            _pending.cap = deficiency;
+            result.ready_tokens = _pending[bucket].cap - deficiency;
+            _pending[bucket].cap = deficiency;
         }
     }
     return result;
 }
 
 io_queue::clock_type::time_point io_queue::stream::next_pending_aio() const noexcept {
-    if (_pending.cap) {
+    if (_pending[0].cap) {
         /*
          * We expect the disk to release the ticket within some time,
          * but it's ... OK if it doesn't -- the pending wait still
@@ -1315,7 +1315,7 @@ io_queue::clock_type::time_point io_queue::stream::next_pending_aio() const noex
          * which's sub-optimal. The expectation is that we think disk
          * works faster, than it really does.
          */
-        auto over = out.capacity_deficiency(_pending.head, 0);
+        auto over = out.capacity_deficiency(_pending[0].head, 0);
         auto ticks = out.capacity_duration(over);
         return std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::microseconds>(ticks);
     }
@@ -1331,7 +1331,7 @@ auto io_queue::stream::grab_capacity(capacity_t cap, reap_result& available, uns
         // We do that after the if-else.
         available.ready_tokens -= cap;
         return grab_result::ok;
-    } else if (cap <= available.ready_tokens + _pending.cap || _pending.cap >= max_unamortized_reservation) {
+    } else if (cap <= available.ready_tokens + _pending[bucket].cap || _pending[bucket].cap >= max_unamortized_reservation) {
         // We can't dispatch the request yet, but we already have a pending reservation
         // which will provide us with enough tokens for it eventually,
         // or our reservation is already max-size and we can't reserve more tokens until we reap some.
@@ -1339,20 +1339,20 @@ auto io_queue::stream::grab_capacity(capacity_t cap, reap_result& available, uns
         // We return any immediately-available tokens back to `_pending`
         // and we bail. The next `dispatch_request` will again take those tokens
         // (possibly joined by some newly-granted tokens) and retry.
-        _pending.cap += available.ready_tokens;
+        _pending[bucket].cap += available.ready_tokens;
         available.ready_tokens = 0;
         return grab_result::stop;
     } else if (available.our_turn_has_come) {
         // The current reservation isn't enough to fulfill the next request,
         // and we can cancel it (because `our_turn_has_come == true`) and make a bigger one
-        // (because `_pending.cap < can_grab_this_tick`).
+        // (because `_pending[i].cap < can_grab_this_tick`).
         // So we cancel it and do a bigger one.
 
         // We do token recycling here: we return the tokens which we have available, and the tokens we have reserved
         // immediately after the group head, and we return them to the bucket, immediately grabbing the same amount from the tail.
         // This is neutral to fairness. The bandwidth we consume is still influenced only by the
         // `max_unarmortized_reservation` portions.
-        auto recycled = available.ready_tokens + _pending.cap;
+        auto recycled = available.ready_tokens + _pending[bucket].cap;
         capacity_t grab_amount = std::min<capacity_t>(recycled + max_unamortized_reservation, fq.queued_capacity());
         // There's technically nothing wrong with grabbing more than `out.maximum_capacity()`,
         // but the token bucket has an assert for that, and its a reasonable expectation, so let's respect that limit.
@@ -1362,7 +1362,7 @@ auto io_queue::stream::grab_capacity(capacity_t cap, reap_result& available, uns
         // Replace _pending with a new reservation starting at the current
         // group bucket tail.
         capacity_t want_head = out.grab_capacity(grab_amount, bucket);
-        _pending = pending{want_head, grab_amount};
+        _pending[bucket] = pending{want_head, grab_amount};
         available = reap_pending_capacity(bucket);
         return grab_result::again;
     } else {

@@ -85,16 +85,16 @@ private:
         fair_queue fq;
         clock_type::time_point replenish;
         io_throttler& out;
-        // _pending represents a reservation of tokens from the bucket.
+        // _pending[b] represents a reservation of tokens from bucket b.
         //
         // In the "dispatch timeline" defined by the growing bucket head of the group,
-        // tokens in the range [_pending.head - cap, _pending.head) belong
+        // tokens in the range [_pending[b].head - cap, _pending[b].head) belong
         // to this queue.
         //
         // For example, if:
-        //    _group._token_bucket.head == 300
-        //    _pending.head == 700
-        //    _pending.cap == 500
+        //    _group._token_bucket[b].head == 300
+        //    _pending[b].head == 700
+        //    _pending[b].cap == 500
         // then the reservation is [200, 700), 100 tokens are ready to be dispatched by this queue,
         // and another 400 tokens are going to be appear soon. (And after that, this queue
         // will be able to make its next reservation).
@@ -102,17 +102,17 @@ private:
             capacity_t head = 0;
             capacity_t cap = 0;
         };
-        pending _pending;
+        pending _pending[1];
         stream(io_throttler& t, fair_queue::config cfg)
             : fq(std::move(cfg))
             , replenish(clock_type::now())
             , out(t)
         {}
 
-        // Shaves off the fulfilled frontal part from `_pending` (if any),
+        // Shaves off the fulfilled frontal part from `_pending[bucket]` (if any),
         // and returns the fulfilled tokens in `ready_tokens`.
-        // Sets `our_turn_has_come` to the truth value of "`_pending` is empty or
-        // there are no unfulfilled reservations (from other shards) earlier than `_pending`".
+        // Sets `our_turn_has_come` to the truth value of "`_pending[bucket]` is empty or
+        // there are no unfulfilled reservations (from other shards) earlier than `_pending[bucket]`".
         //
         // Assumes that `_group.maybe_replenish_capacity()` was called recently.
         struct reap_result {

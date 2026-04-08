@@ -73,6 +73,10 @@ struct io_queue_for_tests {
             return enqueue(sg, req_size);
         });
     }
+
+    void mark_priority_lane(scheduling_supergroup ssg) {
+        queue.mark_class_group_as_priority_lane(ssg.index());
+    }
 };
 
 int main(int ac, char** av) {
@@ -102,7 +106,9 @@ int main(int ac, char** av) {
             const size_t fg_req_size = 4*1024;
 
             auto bg_sg = create_scheduling_group("bg", 200).get();
-            auto fg_sg = create_scheduling_group("fg", 1000).get();
+            auto fg_ssg = create_scheduling_supergroup(1000).get();
+            fg_ssg.mark_as_io_priority_lane();
+            auto fg_sg = create_scheduling_group("fg", "fg", 1000, fg_ssg).get();
 
             io_queue::config cfg{0};
             cfg.req_count_rate = io_queue::read_request_base_count * iops;
@@ -117,6 +123,7 @@ int main(int ac, char** av) {
             std::chrono::duration<double> total_delay(0);
             double total_bg_iops = 0;
             const unsigned bg_reqs_per_iter = nr_queues * bg_concurrency;
+            queues[0]->mark_priority_lane(fg_ssg);
             for (unsigned iter = 0; iter < nr_iterations; iter++) {
                 std::vector<future<>> bgv;
                 auto bg_start = steady_clock::now();

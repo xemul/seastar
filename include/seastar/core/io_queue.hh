@@ -227,6 +227,7 @@ public:
     void unthrottle_priority_class(const priority_class_data& pc) noexcept;
     void throttle_priority_class_group(unsigned group) noexcept;
     void unthrottle_priority_class_group(unsigned group) noexcept;
+    void mark_class_group_as_priority_lane(unsigned group_index);
 
     struct request_limits {
         size_t max_read;

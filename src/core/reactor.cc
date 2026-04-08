@@ -211,6 +211,12 @@ void reactor::update_group_shares_for_queues(unsigned index, uint32_t shares) {
     }
 }
 
+void reactor::mark_class_group_as_priority_lane(unsigned group_index) {
+    for (auto&& q : _io_queues) {
+        q.second->mark_class_group_as_priority_lane(group_index);
+    }
+}
+
 future<> reactor::update_bandwidth_for_queues(internal::priority_class pc, uint64_t bandwidth) {
     return smp::invoke_on_all([pc, bandwidth = bandwidth / _num_io_groups] {
         return parallel_for_each(engine()._io_queues, [pc, bandwidth] (auto& queue) {
@@ -5147,6 +5153,11 @@ future<> scheduling_group::update_io_bandwidth(uint64_t bandwidth) const {
 future<> scheduling_supergroup::update_io_bandwidth(uint64_t bandwidth) const {
     SEASTAR_ASSERT(!is_root());
     return engine().update_bandwidth_for_queues(index(), bandwidth);
+}
+
+void scheduling_supergroup::mark_as_io_priority_lane() const {
+    SEASTAR_ASSERT(!is_root());
+    engine().mark_class_group_as_priority_lane(index());
 }
 
 void scheduling_supergroup::set_shares(float shares) noexcept {

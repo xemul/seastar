@@ -112,6 +112,7 @@ auto io_throttler::capacity_deficiency(capacity_t from, unsigned bucket) const n
 
 struct io_group::priority_class_data {
     priority_class_group_data* parent;
+    bool priority_lane = false;
 
     using token_bucket_t = internal::shared_token_bucket<uint64_t, std::ratio<1>, internal::capped_release::no>;
 
@@ -229,7 +230,7 @@ public:
         , _total_queue_time(0)
         , _total_execution_time(0)
         , _starvation_time(0)
-        , _bucket_idx(1)
+        , _bucket_idx(pg.parent != nullptr && pg.parent->priority_lane ? 0 : 1)
     {
         _bw.emplace_back(pg, *this, std::nullopt);
         if (pg.parent != nullptr) {
@@ -1314,6 +1315,10 @@ void io_queue::unthrottle_priority_class_group(unsigned group) noexcept {
     for (auto&& s : _streams) {
         s.fq.plug_class_group(group);
     }
+}
+
+void io_queue::mark_class_group_as_priority_lane(unsigned group_index) {
+    _group->find_or_create_class_group(group_index).priority_lane = true;
 }
 
 auto io_queue::stream::reap_pending_capacity(unsigned bucket) noexcept -> reap_result {

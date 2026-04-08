@@ -507,6 +507,7 @@ private:
     void rename_queues(internal::priority_class pc, sstring new_name);
     void update_shares_for_queues(internal::priority_class pc, uint32_t shares);
     void update_group_shares_for_queues(unsigned, uint32_t shares);
+    void mark_class_group_as_priority_lane(unsigned group_index);
 
 public:
     server_socket listen(socket_address sa, listen_options opts = {});

@@ -363,6 +363,15 @@ public:
     /// \param bandwidth the new bandwidth value in bytes/second
     /// \return a future that is ready when the bandwidth update is applied
     future<> update_io_bandwidth(uint64_t bandwidth) const;
+
+    /// \brief Marks this supergroup as the priority lane for IO scheduling.
+    ///
+    /// All priority classes created within this supergroup will be placed into
+    /// the priority IO token bucket (bucket 0), giving them first access to
+    /// replenished IO tokens before normal-bucket classes.
+    ///
+    /// Must not be called on the root supergroup
+    void mark_as_io_priority_lane() const;
 };
 
 /// \brief Identifies function calls that are accounted as a group

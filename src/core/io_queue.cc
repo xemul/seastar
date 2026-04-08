@@ -71,7 +71,8 @@ io_throttler::io_throttler(config cfg, unsigned nr_queues)
     }
 }
 
-auto io_throttler::grab_capacity(capacity_t cap) noexcept -> capacity_t {
+auto io_throttler::grab_capacity(capacity_t cap, unsigned bucket) noexcept -> capacity_t {
+    (void)bucket;
     SEASTAR_ASSERT(cap <= _token_bucket.limit());
     return _token_bucket.grab(cap);
 }
@@ -80,7 +81,8 @@ void io_throttler::replenish_capacity(clock_type::time_point now) noexcept {
     _token_bucket.replenish(now);
 }
 
-void io_throttler::refund_tokens(capacity_t cap) noexcept {
+void io_throttler::refund_tokens(capacity_t cap, unsigned bucket) noexcept {
+    (void)bucket;
     _token_bucket.refund(cap);
 }
 
@@ -94,7 +96,8 @@ void io_throttler::maybe_replenish_capacity(clock_type::time_point& local_ts) no
     }
 }
 
-auto io_throttler::capacity_deficiency(capacity_t from) const noexcept -> capacity_t {
+auto io_throttler::capacity_deficiency(capacity_t from, unsigned bucket) const noexcept -> capacity_t {
+    (void)bucket;
     return _token_bucket.deficiency(from);
 }
 
@@ -1134,7 +1137,7 @@ void io_queue::poll_io_queue() {
 
     for (auto&& st : _streams) {
         st.out.maybe_replenish_capacity(st.replenish);
-        auto available = st.reap_pending_capacity();
+        auto available = st.reap_pending_capacity(0);
 
         while (true) {
             auto* ent = st.fq.top();
@@ -1143,7 +1146,7 @@ void io_queue::poll_io_queue() {
                 break;
             }
 
-            auto result = st.grab_capacity(ent->capacity(), available);
+            auto result = st.grab_capacity(ent->capacity(), available, 0);
             if (result == stream::grab_result::stop) {
                 break;
             }
@@ -1286,10 +1289,11 @@ void io_queue::unthrottle_priority_class_group(unsigned group) noexcept {
     }
 }
 
-auto io_queue::stream::reap_pending_capacity() noexcept -> reap_result {
+auto io_queue::stream::reap_pending_capacity(unsigned bucket) noexcept -> reap_result {
+    (void)bucket;
     auto result = reap_result{.ready_tokens = 0, .our_turn_has_come = true};
     if (_pending.cap) {
-        capacity_t deficiency = out.capacity_deficiency(_pending.head);
+        capacity_t deficiency = out.capacity_deficiency(_pending.head, bucket);
         result.our_turn_has_come = deficiency <= _pending.cap;
         if (result.our_turn_has_come) {
             result.ready_tokens = _pending.cap - deficiency;
@@ -1311,7 +1315,7 @@ io_queue::clock_type::time_point io_queue::stream::next_pending_aio() const noex
          * which's sub-optimal. The expectation is that we think disk
          * works faster, than it really does.
          */
-        auto over = out.capacity_deficiency(_pending.head);
+        auto over = out.capacity_deficiency(_pending.head, 0);
         auto ticks = out.capacity_duration(over);
         return std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::microseconds>(ticks);
     }
@@ -1319,7 +1323,7 @@ io_queue::clock_type::time_point io_queue::stream::next_pending_aio() const noex
     return std::chrono::steady_clock::time_point::max();
 }
 
-auto io_queue::stream::grab_capacity(capacity_t cap, reap_result& available) -> grab_result {
+auto io_queue::stream::grab_capacity(capacity_t cap, reap_result& available, unsigned bucket) -> grab_result {
     const uint64_t max_unamortized_reservation = out.per_tick_grab_threshold();
 
     if (cap <= available.ready_tokens) {
@@ -1354,12 +1358,12 @@ auto io_queue::stream::grab_capacity(capacity_t cap, reap_result& available) -> 
         // but the token bucket has an assert for that, and its a reasonable expectation, so let's respect that limit.
         // It shouldn't matter in practice.
         grab_amount = std::min<capacity_t>(grab_amount, out.maximum_capacity());
-        out.refund_tokens(recycled);
+        out.refund_tokens(recycled, bucket);
         // Replace _pending with a new reservation starting at the current
         // group bucket tail.
-        capacity_t want_head = out.grab_capacity(grab_amount);
+        capacity_t want_head = out.grab_capacity(grab_amount, bucket);
         _pending = pending{want_head, grab_amount};
-        available = reap_pending_capacity();
+        available = reap_pending_capacity(bucket);
         return grab_result::again;
     } else {
         // We can already see that our current reservation is going to be insufficient

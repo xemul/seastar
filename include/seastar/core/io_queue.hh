@@ -122,8 +122,8 @@ private:
         enum class grab_result { ok, stop, again };
 
         clock_type::time_point next_pending_aio() const noexcept;
-        reap_result reap_pending_capacity() noexcept;
-        grab_result grab_capacity(capacity_t cap, reap_result& available);
+        reap_result reap_pending_capacity(unsigned bucket) noexcept;
+        grab_result grab_capacity(capacity_t cap, reap_result& available, unsigned bucket);
 
         std::vector<seastar::metrics::impl::metric_definition_impl> metrics(const priority_class_data&);
     };
@@ -370,13 +370,13 @@ public:
 
     capacity_t maximum_capacity() const noexcept { return _token_bucket.limit(); }
     capacity_t per_tick_grab_threshold() const noexcept { return _per_tick_threshold; }
-    capacity_t grab_capacity(capacity_t cap) noexcept;
+    capacity_t grab_capacity(capacity_t cap, unsigned bucket) noexcept;
     clock_type::time_point replenished_ts() const noexcept { return _token_bucket.replenished_ts(); }
-    void refund_tokens(capacity_t) noexcept;
+    void refund_tokens(capacity_t, unsigned bucket) noexcept;
     void replenish_capacity(clock_type::time_point now) noexcept;
     void maybe_replenish_capacity(clock_type::time_point& local_ts) noexcept;
 
-    capacity_t capacity_deficiency(capacity_t from) const noexcept;
+    capacity_t capacity_deficiency(capacity_t from, unsigned bucket) const noexcept;
 
     std::chrono::duration<double> rate_limit_duration() const noexcept {
         std::chrono::duration<double, rate_resolution> dur((double)_token_bucket.limit() / _token_bucket.rate());

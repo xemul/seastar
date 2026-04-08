@@ -102,7 +102,7 @@ private:
             capacity_t head = 0;
             capacity_t cap = 0;
         };
-        pending _pending[1];
+        pending _pending[2];
         stream(io_throttler& t, fair_queue::config cfg)
             : fq(std::move(cfg))
             , replenish(clock_type::now())

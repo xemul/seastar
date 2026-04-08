@@ -85,7 +85,11 @@ auto io_throttler::grab_capacity(capacity_t cap, unsigned bucket) noexcept -> ca
 }
 
 void io_throttler::replenish_capacity(clock_type::time_point now) noexcept {
-    _token_bucket[0].replenish(now);
+    // Fill the priority bucket first; any tokens it can't absorb spill to the normal bucket.
+    auto remainder = _token_bucket[0].replenish(now);
+    if (remainder > 0) {
+        _token_bucket[1].add_tokens(remainder, _token_bucket[1].limit());
+    }
 }
 
 void io_throttler::refund_tokens(capacity_t cap, unsigned bucket) noexcept {
@@ -225,6 +229,7 @@ public:
         , _total_queue_time(0)
         , _total_execution_time(0)
         , _starvation_time(0)
+        , _bucket_idx(1)
     {
         _bw.emplace_back(pg, *this, std::nullopt);
         if (pg.parent != nullptr) {
@@ -295,8 +300,12 @@ public:
 
     fair_queue::class_id fq_class() const noexcept { return _pc.id(); }
 
+    unsigned bucket_idx() const noexcept { return _bucket_idx; }
+
     std::vector<seastar::metrics::impl::metric_definition_impl> metrics();
     metrics::metric_groups metric_groups;
+private:
+    unsigned _bucket_idx;
 };
 
 class io_desc_read_write final : public io_completion {
@@ -370,6 +379,7 @@ class queued_io_request : private internal::io_request {
     fair_queue_entry _fq_entry;
     internal::cancellable_queue::link _intent;
     std::unique_ptr<io_desc_read_write> _desc;
+    const unsigned _bucket_idx;
 
     bool is_cancelled() const noexcept { return !_desc; }
 
@@ -380,6 +390,7 @@ public:
         , _stream(_ioq.request_stream(dnl))
         , _fq_entry(cap)
         , _desc(std::make_unique<io_desc_read_write>(_ioq, pc, _stream, dnl, cap, std::move(iovs)))
+        , _bucket_idx(pc.bucket_idx())
     {
     }
 
@@ -410,6 +421,7 @@ public:
     future<size_t> get_future() noexcept { return _desc->get_future(); }
     fair_queue_entry& queue_entry() noexcept { return _fq_entry; }
     stream_id stream() const noexcept { return _stream; }
+    unsigned bucket() const noexcept { return _bucket_idx; }
 
     static queued_io_request& from_fq_entry(fair_queue_entry& ent) noexcept {
         return *boost::intrusive::get_parent_from_member(&ent, &queued_io_request::_fq_entry);
@@ -1142,17 +1154,26 @@ void io_queue::poll_io_queue() {
 
     for (auto&& st : _streams) {
         st.out.maybe_replenish_capacity(st.replenish);
-        auto available = st.reap_pending_capacity(0);
+        stream::reap_result avail[2] = {
+            st.reap_pending_capacity(0),
+            st.reap_pending_capacity(1),
+        };
 
         while (true) {
             auto* ent = st.fq.top();
             if (ent == nullptr) {
-                available.ready_tokens = 0;
+                avail[0].ready_tokens = 0;
+                avail[1].ready_tokens = 0;
                 break;
             }
 
-            auto result = st.grab_capacity(ent->capacity(), available, 0);
+            unsigned b = queued_io_request::from_fq_entry(*ent).bucket();
+            auto result = st.grab_capacity(ent->capacity(), avail[b], b);
             if (result == stream::grab_result::stop) {
+                // Return any unconsumed ready_tokens from the other bucket to its pending slot.
+                unsigned ob = 1 - b;
+                st._pending[ob].cap += avail[ob].ready_tokens;
+                avail[ob].ready_tokens = 0;
                 break;
             }
             if (result == stream::grab_result::again) {
@@ -1163,7 +1184,8 @@ void io_queue::poll_io_queue() {
             queued_io_request::from_fq_entry(*ent).dispatch();
         }
 
-        SEASTAR_ASSERT(available.ready_tokens == 0);
+        SEASTAR_ASSERT(avail[0].ready_tokens == 0);
+        SEASTAR_ASSERT(avail[1].ready_tokens == 0);
         // Note: if IO cancellation happens, it's possible that we are still holding some tokens in `ready` here.
         //
         // We could refund them to the bucket, but permanently refunding tokens (as opposed to only
@@ -1295,7 +1317,6 @@ void io_queue::unthrottle_priority_class_group(unsigned group) noexcept {
 }
 
 auto io_queue::stream::reap_pending_capacity(unsigned bucket) noexcept -> reap_result {
-    (void)bucket;
     auto result = reap_result{.ready_tokens = 0, .our_turn_has_come = true};
     if (_pending[bucket].cap) {
         capacity_t deficiency = out.capacity_deficiency(_pending[bucket].head, bucket);
@@ -1309,23 +1330,18 @@ auto io_queue::stream::reap_pending_capacity(unsigned bucket) noexcept -> reap_r
 }
 
 io_queue::clock_type::time_point io_queue::stream::next_pending_aio() const noexcept {
-    if (_pending[0].cap) {
-        /*
-         * We expect the disk to release the ticket within some time,
-         * but it's ... OK if it doesn't -- the pending wait still
-         * needs the head rover value to be ahead of the needed value.
-         *
-         * It may happen that the capacity gets released before we think
-         * it will, in this case we will wait for the full value again,
-         * which's sub-optimal. The expectation is that we think disk
-         * works faster, than it really does.
-         */
-        auto over = out.capacity_deficiency(_pending[0].head, 0);
-        auto ticks = out.capacity_duration(over);
-        return std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::microseconds>(ticks);
+    clock_type::time_point earliest = clock_type::time_point::max();
+    for (unsigned b = 0; b < 2; b++) {
+        if (_pending[b].cap) {
+            auto over = out.capacity_deficiency(_pending[b].head, b);
+            auto ticks = out.capacity_duration(over);
+            auto t = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::microseconds>(ticks);
+            if (t < earliest) {
+                earliest = t;
+            }
+        }
     }
-
-    return std::chrono::steady_clock::time_point::max();
+    return earliest;
 }
 
 auto io_queue::stream::grab_capacity(capacity_t cap, reap_result& available, unsigned bucket) -> grab_result {

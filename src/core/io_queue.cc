@@ -129,18 +129,30 @@ struct io_group::priority_class_data {
 
 class io_queue::priority_entity {
 protected:
+    priority_class_group_data* const _pcg;  // nullptr for the top level (no parent group)
     uint32_t _shares;
 
-    explicit priority_entity(uint32_t shares) noexcept
-            : _shares(std::max(shares, 1u))
+    explicit priority_entity(priority_class_group_data* pcg, uint32_t shares) noexcept
+            : _pcg(pcg)
+            , _shares(std::max(shares, 1u))
     {}
 
 public:
+    priority_class_group_data* parent() const noexcept { return _pcg; }
     uint32_t shares() const noexcept { return _shares; }
 
     void update_shares(uint32_t shares) noexcept {
         _shares = std::max(shares, 1u);
     }
+};
+
+struct io_queue::priority_class_group_data : public io_queue::priority_entity {
+    const unsigned _index;
+
+    priority_class_group_data(unsigned index, uint32_t shares) noexcept
+        : priority_entity(nullptr, shares)
+        , _index(index)
+    {}
 };
 
 class io_queue::priority_class_data : public io_queue::priority_entity {
@@ -218,8 +230,8 @@ class io_queue::priority_class_data : public io_queue::priority_entity {
     boost::container::static_vector<bandwidth_throttler, 2> _bw;
 
 public:
-    priority_class_data(internal::priority_class pc, uint32_t shares, io_queue& q, io_group::priority_class_data& pg, std::optional<unsigned> group_index)
-        : priority_entity(shares)
+    priority_class_data(internal::priority_class pc, uint32_t shares, io_queue& q, io_group::priority_class_data& pg, std::optional<unsigned> group_index, priority_class_group_data* pcg)
+        : priority_entity(pcg, shares)
         , _queue(q)
         , _pc(pc)
         , _nr_queued(0)
@@ -881,6 +893,16 @@ void io_queue::register_stats(sstring name, priority_class_data& pc) {
     pc.metric_groups = std::exchange(new_metrics, {});
 }
 
+io_queue::priority_class_group_data& io_queue::find_or_create_class_group(unsigned index, uint32_t shares) {
+    if (index >= _priority_groups.size()) {
+        _priority_groups.resize(index + 1);
+    }
+    if (!_priority_groups[index]) {
+        _priority_groups[index] = std::make_unique<priority_class_group_data>(index, shares);
+    }
+    return *_priority_groups[index];
+}
+
 io_queue::priority_class_data& io_queue::find_or_create_class(internal::priority_class pc) {
     auto id = pc.id();
     if (id >= _priority_classes.size()) {
@@ -905,9 +927,11 @@ io_queue::priority_class_data& io_queue::find_or_create_class(internal::priority
         // This conveys all the information we need and allows one to easily group all classes from
         // the same I/O queue (by filtering by shard)
 
+        priority_class_group_data* pcg = nullptr;
         std::optional<unsigned> group_index;
         if (!ssg.is_root()) {
             group_index = ssg.index();
+            pcg = &find_or_create_class_group(*group_index, ssg.get_shares());
             for (auto&& s : _streams) {
                 s.fq.ensure_priority_group(*group_index, ssg.get_shares());
             }
@@ -916,7 +940,7 @@ io_queue::priority_class_data& io_queue::find_or_create_class(internal::priority
         auto& pg = _group->find_or_create_class(pc, group_index);
 
         auto shares = sg.get_shares();
-        auto pc_data = std::make_unique<priority_class_data>(pc, shares, *this, pg, group_index);
+        auto pc_data = std::make_unique<priority_class_data>(pc, shares, *this, pg, group_index, pcg);
         for (auto&& s : _streams) {
             s.fq.register_priority_class(pc_data->fq_class(), shares, group_index);
         }

@@ -77,6 +77,7 @@ public:
     struct priority_class_group_data;
     using clock_type = std::chrono::steady_clock;
     using capacity_t = uint64_t;
+    using token_bucket_t = internal::shard_aware_token_bucket<capacity_t, std::milli>;
 
 private:
     std::vector<std::unique_ptr<priority_class_data>> _priority_classes;
@@ -86,7 +87,8 @@ private:
     struct stream {
         io_throttler& out;
         sstring _label;
-        stream(io_throttler& t, sstring label) noexcept : out(t), _label(std::move(label)) {}
+        io_queue::token_bucket_t::local_publisher publisher;
+        stream(io_throttler& t, sstring label) noexcept;
         std::vector<seastar::metrics::impl::metric_definition_impl> metrics(const priority_class_data&, stream_id);
     };
     boost::container::static_vector<stream, 2> _streams;

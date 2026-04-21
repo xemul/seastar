@@ -126,15 +126,15 @@ protected:
     boost::container::static_vector<io_throttler::tokens, 2> _tokens;
 
     priority_entity(priority_class_group_data* pcg, uint32_t shares,
-                    boost::container::static_vector<io_throttler, 2>& fgs,
+                    boost::container::static_vector<stream, 2>& streams,
                     bool with_consumers)
             : _pcg(pcg)
             , _shares(std::max(shares, 1u))
     {
-        for (auto& fg : fgs) {
-            _tokens.emplace_back(fg.token_bucket().burst_limit());
+        for (auto& st : streams) {
+            _tokens.emplace_back(st.out.token_bucket().burst_limit());
             if (with_consumers) {
-                _consumers.emplace_back(fg.token_bucket(), capacity_t(_shares));
+                _consumers.emplace_back(st.publisher, capacity_t(_shares));
             }
         }
     }
@@ -197,8 +197,8 @@ struct io_queue::priority_class_group_data : public io_queue::priority_entity {
     std::vector<priority_class_data*> _children;
 
     priority_class_group_data(unsigned index, uint32_t shares,
-                              boost::container::static_vector<io_throttler, 2>& fgs)
-        : priority_entity(nullptr, shares, fgs, /*with_consumers=*/true)
+                              boost::container::static_vector<stream, 2>& streams)
+        : priority_entity(nullptr, shares, streams, /*with_consumers=*/true)
         , _index(index)
     {}
 
@@ -534,7 +534,7 @@ public:
     void account_consumption(stream_id s, capacity_t cost) noexcept { _consumption[s] += cost; }
 
     priority_class_data(internal::priority_class pc, uint32_t shares, io_queue& q, io_group::priority_class_data& pg, std::optional<unsigned> group_index, priority_class_group_data* pcg)
-        : priority_entity(pcg, shares, q._group->_fgs, /*with_consumers=*/pcg == nullptr)
+        : priority_entity(pcg, shares, q._streams, /*with_consumers=*/pcg == nullptr)
         , _queue(q)
         , _pc(pc)
         , _nr_queued(0)
@@ -1157,7 +1157,7 @@ io_queue::priority_class_group_data& io_queue::find_or_create_class_group(unsign
         _priority_groups.resize(index + 1);
     }
     if (!_priority_groups[index]) {
-        _priority_groups[index] = std::make_unique<priority_class_group_data>(index, shares, _group->_fgs);
+        _priority_groups[index] = std::make_unique<priority_class_group_data>(index, shares, _streams);
     }
     return *_priority_groups[index];
 }
@@ -1411,8 +1411,13 @@ void io_queue::poll_io_queue() {
     auto now = clock_type::now();
 
     // Phase 1: replenish global bucket, then distribute tokens to all consumers.
+    // Merging replenish + publisher flush into one pass: each bucket gains
+    // tokens from replenish_capacity() and commits pending share deltas in one
+    // sweep, so the update_consumers() calls below see consistent per-bucket
+    // denominators and numerators.
     for (auto& st : _streams) {
         st.out.replenish_capacity(now);
+        st.publisher.flush();
     }
     for (auto& pc : _priority_classes) {
         if (pc) {
@@ -1561,6 +1566,9 @@ void io_queue::unthrottle_priority_class_group(unsigned group) noexcept {
         _priority_groups[group]->plug();
     }
 }
+
+io_queue::stream::stream(io_throttler& t, sstring label) noexcept
+    : out(t), _label(std::move(label)), publisher(t.token_bucket()) {}
 
 std::vector<seastar::metrics::impl::metric_definition_impl> io_queue::stream::metrics(const priority_class_data& pc, stream_id si) {
     namespace sm = seastar::metrics;
